@@ -1,0 +1,27 @@
+[package]
+name = "notopad"
+description = "A terminal notes editor with live Markdown preview"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[[bin]]
+name = "notopad"
+path = "src/main.rs"
+
+[dependencies]
+notopad-core.workspace = true
+notopad-render.workspace = true
+notopad-tui.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+crossterm.workspace = true
+
+[lints]
+workspace = true

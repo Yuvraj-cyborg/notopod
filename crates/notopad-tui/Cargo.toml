@@ -1,0 +1,22 @@
+[package]
+name = "notopad-tui"
+description = "Terminal user interface for notopad: live-preview Markdown editing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+notopad-core.workspace = true
+notopad-editor.workspace = true
+notopad-render.workspace = true
+anyhow.workspace = true
+ratatui = { workspace = true, features = ["crossterm", "layout-cache", "underline-color"] }
+unicode-width.workspace = true
+
+[lints]
+workspace = true

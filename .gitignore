@@ -1,0 +1,6 @@
+/target
+*.notopad-tmp
+/result
+/result-*
+.direnv/
+.DS_Store
