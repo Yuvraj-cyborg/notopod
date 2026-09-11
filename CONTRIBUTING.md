@@ -10,7 +10,8 @@ the same tools.
 
 ```
 cargo build
-cargo run -p notopad -- /tmp/scratch.md
+cargo run -- /tmp/scratch.md
+cargo install --path .      # puts `notopod` on your PATH for day-to-day use
 ```
 
 ## Before you push
@@ -53,19 +54,22 @@ If a user would notice the change, add a line under **Unreleased** in
 
 | Path | Contents |
 |---|---|
-| `crates/notopad-core` | Document model, Markdown parser, line index |
-| `crates/notopad-render` | Theme, block and inline rendering, wrapping, ANSI output |
-| `crates/notopad-editor` | Rope buffer, cursor, undo history, list-aware Enter, search, save |
-| `crates/notopad-tui` | App state, key handling, screen layout, drawing |
-| `crates/notopad` | The command-line entry point |
+| `src/` | The `notopod` command-line entry point (root package) |
+| `lib/syntax` | Document model, Markdown parser, line index |
+| `lib/render` | Theme, block and inline rendering, wrapping, ANSI output |
+| `lib/editor` | Rope buffer, cursor, undo history, list-aware Enter, search, save |
+| `lib/tui` | App state, key handling, screen layout, drawing |
 | `docs/` | Architecture notes and the release procedure |
+
+New library crates go in `lib/<name>` with a short name and
+`publish = false`, and get one line in the tables here and in the README.
 
 `docs/ARCHITECTURE.md` explains how the pieces fit and how to add a new
 kind of block.
 
 ## Testing the screen
 
-Layout logic (`notopad-tui/src/view.rs`) has unit tests. For behaviour,
+Layout logic (`lib/tui/src/view.rs`) has unit tests. For behaviour,
 run the editor and try the awkward cases: a list with an empty item,
 Enter inside a word, Ctrl+Z after pasting, a very long line, resizing the
 terminal, a file that does not exist yet.
