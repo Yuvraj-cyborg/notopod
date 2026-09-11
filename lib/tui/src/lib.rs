@@ -4,10 +4,13 @@
 //! formatted text except the one the cursor is in, which shows its raw
 //! Markdown so it can be edited. That is the whole trick.
 //!
-//! Call [`run`] with an optional file path to start the editor.
+//! Call [`run`] with an optional file path to start the editor, or
+//! [`pick_theme`] for the second screen this crate has: the list of themes
+//! with a sample note beside it, drawn in whichever one is highlighted.
 
 mod app;
 mod canvas_mode;
+mod picker;
 mod ui;
 mod view;
 
@@ -22,6 +25,7 @@ use ratatui::crossterm::execute;
 use theme::Theme;
 
 pub use app::App;
+pub use picker::{pick_theme, Entry as ThemeEntry};
 
 /// Opens `path` (or an empty buffer) in the editor and runs until the user quits.
 ///
