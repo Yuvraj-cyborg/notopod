@@ -158,6 +158,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
 
 [[package]]
+name = "canvas"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "theme",
+ "unicode-width",
+]
+
+[[package]]
 name = "castaway"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1226,6 +1235,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "render"
 version = "0.1.0"
 dependencies = [
+ "canvas",
  "ratatui",
  "syntax",
  "theme",

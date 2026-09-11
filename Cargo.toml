@@ -54,6 +54,7 @@ categories = ["text-editors", "command-line-utilities"]
 # Internal crates. Short, unprefixed names; they are not published to
 # crates.io (see `publish = false` in each), so no version is needed here.
 syntax = { path = "lib/syntax" }
+canvas = { path = "lib/canvas" }
 render = { path = "lib/render" }
 editor = { path = "lib/editor" }
 theme = { path = "lib/theme" }

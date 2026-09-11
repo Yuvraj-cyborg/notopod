@@ -71,6 +71,9 @@ fn render_block_at(block: &Block, width: usize, theme: &Theme, depth: usize) -> 
             spans.extend(render_inlines(content, style, theme).into_iter().flatten());
             wrap_spans(spans, width)
         }
+        BlockKind::CodeBlock { lang, code } if lang.as_deref() == Some(canvas::LANG) => {
+            canvas::render_source(code, theme, width)
+        }
         BlockKind::CodeBlock { lang, code } => code_block(lang.as_deref(), code, width, theme),
         BlockKind::BlockQuote(blocks) => {
             let inner = render_blocks(blocks, width.saturating_sub(2).max(1), theme, depth, true);
@@ -415,6 +418,14 @@ mod tests {
             render("```rs\nlet x;\n```\n", 12),
             vec!["╭─ rs ─────╮", "│ let x;   │", "╰──────────╯"]
         );
+    }
+
+    #[test]
+    fn draw_block_renders_as_a_drawing() {
+        let lines = render("```draw\nrect 0,0 6x3 \"hi\"\n```\n", 40);
+        assert_eq!(lines.len(), 4);
+        assert!(!lines[0].starts_with('╭'), "no code box around a drawing");
+        assert!(lines[1].contains("hi"));
     }
 
     #[test]
