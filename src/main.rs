@@ -16,7 +16,7 @@ struct Cli {
     file: Option<PathBuf>,
 
     /// Theme to use: a built-in name, a user theme, or a .toml file.
-    /// Overrides the config file. `notopod themes` lists what is available.
+    /// Overrides the config file. `notopod themes` shows what there is.
     #[arg(long, short = 't', global = true, value_name = "NAME")]
     theme: Option<String>,
 
@@ -49,10 +49,17 @@ enum Command {
         #[arg(long)]
         no_color: bool,
     },
-    /// List themes, or print one as a TOML file to start your own from.
+    /// Pick a theme, list them, or print one as a TOML file to start your
+    /// own from.
     Themes {
         /// Print this theme's TOML (built-in themes only).
         show: Option<String>,
+        /// Print the names and exit, instead of opening the picker.
+        #[arg(long)]
+        list: bool,
+        /// Save this theme to the config file without opening the picker.
+        #[arg(long, value_name = "NAME")]
+        set: Option<String>,
     },
     /// Show where the config file and user themes are read from.
     Config,
@@ -72,7 +79,9 @@ fn main() -> Result<()> {
             width,
             no_color,
         }) => render_note(&file, width, no_color, &theme()?, graphics()?),
-        Some(Command::Themes { show }) => themes(show.as_deref()),
+        Some(Command::Themes { show, list, set }) => {
+            themes(show.as_deref(), list, set.as_deref(), &config, graphics()?)
+        }
         Some(Command::Config) => {
             println!("{}", config::describe_paths());
             Ok(())
@@ -118,7 +127,21 @@ fn render_note(
     Ok(())
 }
 
-fn themes(show: Option<&str>) -> Result<()> {
+/// `notopod themes`: pick one, print the list, print one theme's source,
+/// or save a choice straight to the config file.
+fn themes(
+    show: Option<&str>,
+    list: bool,
+    set: Option<&str>,
+    config: &config::Config,
+    graphics: graphics::Mode,
+) -> Result<()> {
+    if let Some(name) = set {
+        // Look it up first, so a typo is an error instead of a config file
+        // that no longer loads.
+        config::load_theme(name)?;
+        return save_theme(name);
+    }
     if let Some(name) = show {
         let src = theme::Theme::builtin_source(name).with_context(|| {
             format!(
@@ -129,6 +152,61 @@ fn themes(show: Option<&str>) -> Result<()> {
         print!("{src}");
         return Ok(());
     }
+    // The picker needs a terminal at both ends; a pipe gets the list.
+    if !list && std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
+        let chosen = tui::pick_theme(theme_entries(config), config.theme.as_deref(), graphics)?;
+        return match chosen {
+            Some(name) => save_theme(&name),
+            None => Ok(()),
+        };
+    }
+    list_themes();
+    Ok(())
+}
+
+/// Every theme the picker can offer: the built-in ones in their usual
+/// order, then the user's. A theme file that does not parse is skipped
+/// rather than fatal; the others are still worth showing.
+fn theme_entries(config: &config::Config) -> Vec<tui::ThemeEntry> {
+    let roughness = config.canvas.roughness;
+    let mut entries: Vec<tui::ThemeEntry> = theme::BUILTIN_NAMES
+        .iter()
+        .filter_map(|name| {
+            Some(tui::ThemeEntry {
+                name: (*name).to_owned(),
+                theme: theme::Theme::builtin(name)?,
+                user: false,
+            })
+        })
+        .collect();
+    for name in config::user_theme_names() {
+        if let Ok(mut theme) = config::load_theme(&name) {
+            // The file's own `name` may be anything, including another
+            // theme's; the file stem is what the config file will say, and
+            // what keeps two themes' pictures apart in the image cache.
+            theme.name.clone_from(&name);
+            entries.push(tui::ThemeEntry {
+                name,
+                theme,
+                user: true,
+            });
+        }
+    }
+    if let Some(r) = roughness {
+        for entry in &mut entries {
+            entry.theme.roughness = r;
+        }
+    }
+    entries
+}
+
+fn save_theme(name: &str) -> Result<()> {
+    let path = config::set_theme(name)?;
+    println!("theme = \"{name}\" saved to {}", path.display());
+    Ok(())
+}
+
+fn list_themes() {
     println!("Built-in:");
     for name in theme::BUILTIN_NAMES {
         println!("  {name}");
@@ -146,5 +224,4 @@ fn themes(show: Option<&str>) -> Result<()> {
             println!("  {name}");
         }
     }
-    Ok(())
 }
