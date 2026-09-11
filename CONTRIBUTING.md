@@ -50,6 +50,34 @@ release: v0.2.0
 If a user would notice the change, add a line under **Unreleased** in
 `CHANGELOG.md` in the same pull request.
 
+## Releases
+
+Versions follow [Semantic Versioning](https://semver.org/): while we are
+on `0.x`, a minor bump may break things, a patch bump may not. One
+version for the whole workspace, set in `[workspace.package]` in the root
+`Cargo.toml`; every crate inherits it.
+
+1. On `dev`: bump the version, move the **Unreleased** notes in
+   `CHANGELOG.md` under a new `## [X.Y.Z] - YYYY-MM-DD` heading,
+   `cargo build` to refresh `Cargo.lock`, commit as `release: vX.Y.Z`.
+2. Merge `dev` into `main` (merge commit, not squash).
+3. Tag on `main` and push the tag:
+
+   ```
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "notopod vX.Y.Z" && git push origin vX.Y.Z
+   ```
+
+The **Release** workflow checks that the tag matches `Cargo.toml`, makes
+the GitHub release with that changelog section as its notes, and attaches
+binaries for Linux (x86_64, aarch64), macOS (x86_64, aarch64) and
+Windows (x86_64). Merge `main` back into `dev` afterwards.
+
+Nothing goes to crates.io: the library crates have short unprefixed names
+that are taken or too generic for the registry, so they are
+`publish = false`, and a binary cannot be published with unpublished path
+dependencies. Users get releases, Nix, or `cargo install --git`.
+
 ## Where things live
 
 | Path | Contents |
