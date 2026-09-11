@@ -7,9 +7,9 @@ notopod is a text editor for Markdown notes that runs in the terminal.
 While you write, headings, lists, tables and code blocks are shown
 formatted. The one block your cursor is on shows its raw Markdown so you
 can edit it. Move away and it snaps back into shape. A ` ```draw ` block
-is a sketch: boxes, arrows and labels rendered as hand-drawn braille
-graphics, and there is a drawing mode to make them without typing a
-single coordinate.
+is a sketch: boxes, arrows and labels drawn the way Excalidraw draws
+them, as a real picture right there in the terminal, and there is a
+drawing mode to make them without typing a single coordinate.
 
 Your notes stay ordinary `.md` files. Open them anywhere else whenever
 you like; a drawing is a short, readable code block there.
@@ -74,6 +74,7 @@ notopod render notes.md     print a note formatted, then exit
 notopod themes              list themes; `notopod themes nord` prints one to start your own
 notopod config              show where the config file and your themes are read from
 notopod --theme nord ...    use a theme for this run (`-t` for short)
+notopod --graphics braille  draw diagrams as dot art even where pictures would work (`-g`)
 ```
 
 `render` is for scripts and pipes, for example `notopod render todo.md | less -R`.
@@ -134,10 +135,26 @@ one per line, placed on terminal columns and rows:
     diamond 46,1 14x7 "ok?" color=yellow
     line 8,3 -> 30,3 "AST"
     line 32,3 -> 52,4 dashed
-    text 1,9 "hand-drawn, in braille" color=muted
+    text 1,9 "hand-drawn, in your terminal" color=muted
     ```
 
-notopod renders it like this (colours not shown):
+In the terminal it looks like this:
+
+![The drawing above, rendered: sketchy anti-aliased strokes in a hand-drawn font](docs/drawing.png)
+
+That is a real picture, not character art: anti-aliased strokes that
+wobble and overshoot the way a quick pen sketch does, hatching, and
+labels in Excalifont, the typeface Excalidraw uses. notopod paints it at
+your terminal's pixel resolution in your theme's colours, with a
+transparent background, and places it exactly over the cells the block
+occupies, so it scrolls and wraps with the text around it. `roughness`
+in your config or theme controls the wobble; `0` gives exact geometry.
+
+Pictures need a terminal that speaks the kitty graphics protocol:
+**kitty**, **Ghostty**, **WezTerm** and **Konsole** do. notopod asks the
+terminal on start-up and, anywhere else (Terminal.app, Alacritty, iTerm2,
+Windows Terminal, inside tmux), draws the same shapes as braille dot
+art instead, two by four dots per cell:
 
 ```
  ⡞⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⢳          ⢠⢊⠁⠲⡈⠑⢄⠈⠳⡈⠑⢌⠑⢄            ⣠⠞⠑⢄
@@ -147,10 +164,10 @@ notopod renders it like this (colours not shown):
  ⢧⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⠜          ⠹⣄⠈⠑⢄⠈⠳⡌⠳⢄⠈⠒⣠⠞         ⠑⣄       ⣀⠔⠁
 ```
 
-Shapes sit on cells, but they are drawn at two by four dots per cell, so
-lines can be diagonal, ellipses are round, and every stroke has the
-slightly wobbly, overshooting look of a quick pen sketch. `roughness` in
-your config or theme controls how much; `0` gives exact geometry.
+`--graphics kitty` forces pictures (say, in a terminal notopod does not
+recognise), `--graphics braille` forces dot art, and `[graphics] mode`
+in the config file sets the default. Pictures ride on colour codes, so
+`--no-color` and `NO_COLOR` also mean braille.
 
 The language:
 
@@ -193,7 +210,8 @@ becomes a cell on the canvas.
 
 Every action rewrites the block's text, so what you see is always what
 is in the file. Start a line inside one box and finish it inside another
-to connect them.
+to connect them. While you draw, the picture shows a faint grid, the cell
+under the cursor, and the shape you are placing or moving.
 
 ## Themes
 
@@ -210,6 +228,9 @@ theme = "nord"
 
 [canvas]
 roughness = 0.7    # 0.0 draws exact geometry, 1.0 is very sketchy
+
+[graphics]
+mode = "auto"      # auto | kitty | braille: how drawings are shown
 ```
 
 To make your own, start from a built-in one:
@@ -226,15 +247,15 @@ file that lists what can be set.
 
 ## What is not there yet
 
-This is version 0.2 territory. It edits and previews notes well and
-draws diagrams. It does not yet have:
+It edits and previews notes well and draws diagrams. It does not yet
+have:
 
 - selecting text, copy and cut
 - ` ```mermaid ` blocks: flowcharts and sequence diagrams laid out for you
 - a file tree, search across notes, `[[links]]` and backlinks
 - syntax colours inside code blocks
 - vim-style keys
-- Kitty/Sixel graphics, export, runnable code blocks
+- pictures over Sixel or the iTerm2 protocol; export to PNG or SVG; runnable code blocks
 
 ## Project layout
 
@@ -245,7 +266,8 @@ it is built from are library crates under `lib/`.
 |---|---|
 | `src/` | The `notopod` command: arguments, config file, dispatch |
 | `lib/syntax` | Parses a note into blocks that remember where in the file they came from |
-| `lib/canvas` | The ` ```draw ` language and its hand-drawn braille renderer |
+| `lib/canvas` | The ` ```draw ` language, its picture renderer and its braille fallback |
+| `lib/graphics` | Shows pictures in the terminal: kitty graphics protocol, capability probing, image cache |
 | `lib/render` | Turns blocks into styled, wrapped terminal text |
 | `lib/theme` | Palettes, styles, built-in themes and the theme file format |
 | `lib/editor` | The text buffer: cursor, editing, undo, saving |
