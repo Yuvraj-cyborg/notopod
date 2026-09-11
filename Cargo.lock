@@ -193,7 +193,7 @@ checksum = "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
 
 [[package]]
 name = "canvas"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "ab_glyph",
  "png",
@@ -453,7 +453,7 @@ dependencies = [
 
 [[package]]
 name = "editor"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "ropey",
  "tempfile",
@@ -620,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "graphics"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "canvas",
  "crossterm",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "notopod"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1354,7 +1354,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "render"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "canvas",
  "ratatui",
@@ -1604,7 +1604,7 @@ dependencies = [
 
 [[package]]
 name = "syntax"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "pulldown-cmark",
 ]
@@ -1700,7 +1700,7 @@ dependencies = [
 
 [[package]]
 name = "theme"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "ratatui",
  "serde",
@@ -1840,7 +1840,7 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "tui"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "canvas",

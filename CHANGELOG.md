@@ -7,15 +7,32 @@ workspace share one version number.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-11
+
 ### Added
 
 - Drawings. A fenced block tagged `draw` holds shapes, one per line
   (`rect`, `ellipse`, `diamond`, `line`/`arrow` with `-> <- <-> --`
   connectors and corners, `text`, `size`; `fill`, `dashed`, `round`,
-  `color=`; quoted labels). It renders as hand-drawn braille graphics:
-  shapes sit on cells but are drawn at 2×4 dots per cell, with jittered,
-  bowed strokes whose roughness the theme controls. Lines that end inside
-  a box connect to its border. Unparsed lines are kept as they are.
+  `color=`; quoted labels). Shapes sit on terminal cells so the keyboard
+  can move over them. Lines that end inside a box connect to its border.
+  Unparsed lines are kept as they are.
+- Drawings are pictures. In kitty, Ghostty, WezTerm and Konsole a `draw`
+  block is painted at the terminal's pixel resolution, Excalidraw style:
+  anti-aliased rough.js strokes drawn twice with a wobble, hatched fills,
+  dashed lines, rounded corners, arrowheads, and labels in Excalifont
+  (bundled, OFL 1.1). The picture is transparent, uses the theme's
+  colours and the terminal's own foreground, and sits on the exact cells
+  the block occupies (kitty graphics protocol with Unicode placeholders),
+  so it scrolls and redraws with the text. Pictures are cached by
+  content and re-rendered on every keystroke while being drawn.
+- Braille fallback. Everywhere else (Terminal.app, Alacritty, iTerm2,
+  Windows Terminal, tmux) the same drawing is shown as dot art at 2×4
+  dots per cell with the same hand-drawn strokes.
+- `--graphics auto|kitty|braille` (`-g`) and `[graphics] mode` in the
+  config file choose between the two; `auto` asks the terminal at
+  start-up (graphics query, foreground/background colours, cell size).
+  `notopod render` shows pictures too when writing to such a terminal.
 - Canvas mode (`Ctrl+D`): draw in a block with the keyboard. `r`/`e`/`d`
   place boxes, `l`/`a` lines and arrows (Space adds corners), `t` labels,
   `m` moves, `x` deletes, `f`/`-`/`o`/`c` change fill, dashes, corners and
@@ -26,9 +43,11 @@ workspace share one version number.
   nine colour palette plus optional per-element `[styles]` overrides.
   `notopod themes` lists them, `notopod themes NAME` prints one.
 - A config file, `~/.config/notopod/config.toml` (`$NOTOPOD_CONFIG`,
-  `$XDG_CONFIG_HOME` honoured): `theme` and `[canvas] roughness`.
-  `notopod config` shows the paths.
+  `$XDG_CONFIG_HOME` honoured): `theme`, `[canvas] roughness` and
+  `[graphics] mode`. `notopod config` shows the paths.
 - `^D draw` in the status bar.
+- Key events that are already waiting are handled before the next frame,
+  so a held arrow key no longer draws a frame per repeat.
 
 ### Changed
 
@@ -69,5 +88,6 @@ First release. A working editor with live preview; no diagram language yet.
 - CI on Linux, macOS and Windows; tagged releases build binaries for five
   targets.
 
-[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.0...v0.1.2
 [0.1.0]: https://github.com/Yuvraj-cyborg/notopod/releases/tag/v0.1.0
