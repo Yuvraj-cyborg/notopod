@@ -8,7 +8,7 @@
 //! unbuffered; the caller takes care of that.
 
 use std::io::Write;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use canvas::CellSize;
 use theme::Rgb;
@@ -65,6 +65,8 @@ pub fn window_cell_size() -> Option<CellSize> {
 /// arrives or `timeout` passes.
 #[cfg(unix)]
 fn read_reply(timeout: Duration) -> Vec<u8> {
+    use std::time::Instant;
+
     use rustix::event::{PollFd, PollFlags, Timespec};
 
     let stdin = rustix::stdio::stdin();
@@ -98,13 +100,15 @@ fn read_reply(timeout: Duration) -> Vec<u8> {
     reply
 }
 
+/// Windows terminals that speak the protocol are rare and reading the
+/// console without blocking needs its own code; until then, no reply.
 #[cfg(not(unix))]
 fn read_reply(_timeout: Duration) -> Vec<u8> {
-    let _ = Instant::now();
     Vec::new()
 }
 
 /// Whether `reply` contains a primary device attributes response.
+#[cfg_attr(not(unix), allow(dead_code))]
 fn has_da1(reply: &[u8]) -> bool {
     let mut i = 0;
     while let Some(pos) = reply[i..].windows(3).position(|w| w == b"\x1b[?") {
