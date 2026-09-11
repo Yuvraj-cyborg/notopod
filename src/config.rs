@@ -14,6 +14,9 @@
 //!
 //! [graphics]
 //! mode = "auto"           # auto | kitty | braille: how drawings are shown
+//!
+//! [keys]
+//! vim = false             # vim keys in the editor
 //! ```
 //!
 //! User themes live in a `themes/` directory next to the config file, one
@@ -39,6 +42,17 @@ pub struct Config {
     /// How drawings reach the screen.
     #[serde(default)]
     pub graphics: GraphicsSection,
+    /// Keyboard options.
+    #[serde(default)]
+    pub keys: Keys,
+}
+
+/// The `[keys]` section.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Keys {
+    /// Vim keys in the editor.
+    pub vim: Option<bool>,
 }
 
 /// The `[graphics]` section.
@@ -124,6 +138,11 @@ pub fn resolve_graphics(flag: Option<graphics::Mode>, config: &Config) -> Result
             .map_err(|e: String| anyhow!("config: graphics.mode: {e}")),
         None => Ok(graphics::Mode::Auto),
     }
+}
+
+/// Whether vim keys are on: `--vim` wins, then `[keys] vim`, then off.
+pub fn resolve_vim(flag: bool, config: &Config) -> bool {
+    flag || config.keys.vim.unwrap_or(false)
 }
 
 /// Loads one theme by name or path, the same way [`resolve_theme`] does.

@@ -16,6 +16,7 @@ mod links;
 mod picker;
 mod ui;
 mod view;
+mod vim;
 
 use std::io::{self, Write};
 use std::path::Path;
@@ -38,8 +39,9 @@ pub use picker::{pick_theme, Entry as ThemeEntry};
 ///
 /// Takes over the terminal for the duration and restores it afterwards,
 /// including on panic. `graphics` decides whether drawings are shown as
-/// pictures; in [`Mode::Auto`] the terminal is asked.
-pub fn run(paths: &[&Path], theme: Theme, graphics: Mode) -> Result<()> {
+/// pictures; in [`Mode::Auto`] the terminal is asked. `vim` turns on vim
+/// keys.
+pub fn run(paths: &[&Path], theme: Theme, graphics: Mode, vim: bool) -> Result<()> {
     let editor = match paths.first() {
         Some(p) => Editor::open(p).with_context(|| format!("cannot open {}", p.display()))?,
         None => Editor::new(),
@@ -48,7 +50,9 @@ pub fn run(paths: &[&Path], theme: Theme, graphics: Mode) -> Result<()> {
     let mut terminal = ratatui::init();
     // Raw mode is on now, so the terminal's answer can be read.
     let graphics = Graphics::detect(graphics);
-    let mut app = App::new(editor, theme).with_graphics(graphics);
+    let mut app = App::new(editor, theme)
+        .with_graphics(graphics)
+        .with_vim(vim);
     for path in paths.iter().skip(1) {
         app.open_path(path);
     }

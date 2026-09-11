@@ -28,6 +28,11 @@ struct Cli {
     #[arg(long, short = 'g', global = true, value_name = "MODE")]
     graphics: Option<graphics::Mode>,
 
+    /// Vim keys in the editor: normal and insert mode, `:` commands.
+    /// `[keys] vim = true` in the config file does the same.
+    #[arg(long, global = true)]
+    vim: bool,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -82,10 +87,11 @@ fn main() -> Result<()> {
     let config = config::load()?;
     let theme = || config::resolve_theme(cli.theme.as_deref(), &config);
     let graphics = || config::resolve_graphics(cli.graphics, &config);
+    let vim = config::resolve_vim(cli.vim, &config);
 
     match cli.command {
-        None => tui::run(&as_paths(&cli.files), theme()?, graphics()?),
-        Some(Command::Edit { files }) => tui::run(&as_paths(&files), theme()?, graphics()?),
+        None => tui::run(&as_paths(&cli.files), theme()?, graphics()?, vim),
+        Some(Command::Edit { files }) => tui::run(&as_paths(&files), theme()?, graphics()?, vim),
         Some(Command::Render {
             file,
             width,

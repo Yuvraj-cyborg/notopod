@@ -19,6 +19,7 @@ use crate::files::FilePanel;
 use crate::graph_view::GraphView;
 use crate::links::{self, Link};
 use crate::view::{self, Override, Source, View};
+use crate::vim::Vim;
 
 /// How long a status-bar message stays visible.
 const NOTICE_TTL: Duration = Duration::from_secs(4);
@@ -119,8 +120,10 @@ pub struct App {
     /// The graph screen, while it is up.
     pub(crate) graph: Option<GraphView>,
     pub(crate) focus: Focus,
+    /// Vim keys, when they are switched on.
+    pub(crate) vim: Option<Vim>,
     last_query: String,
-    quit: bool,
+    pub(crate) quit: bool,
 }
 
 struct Parsed {
@@ -162,6 +165,7 @@ impl App {
             files: None,
             graph: None,
             focus: Focus::Editor,
+            vim: None,
             last_query: String::new(),
             quit: false,
         }
@@ -172,6 +176,14 @@ impl App {
     #[must_use]
     pub fn with_graphics(mut self, graphics: Graphics) -> Self {
         self.graphics = graphics;
+        self
+    }
+
+    /// Switches vim keys on or off. Off, the keys are the ones in the
+    /// status bar; on, the note starts in normal mode.
+    #[must_use]
+    pub fn with_vim(mut self, on: bool) -> Self {
+        self.vim = on.then(Vim::new);
         self
     }
 
@@ -310,7 +322,7 @@ impl App {
 
     /// Ctrl+W: closes the current tab, asking first if it has unsaved
     /// changes. The last tab is not closed but emptied.
-    fn request_close_tab(&mut self) {
+    pub(crate) fn request_close_tab(&mut self) {
         if self.editor().is_dirty() {
             self.mode = Mode::ConfirmClose;
         } else {
@@ -440,7 +452,12 @@ impl App {
             Focus::Editor => {}
         }
         match self.mode {
-            Mode::Edit => self.handle_edit_key(key),
+            Mode::Edit => {
+                if self.vim.is_some() && self.handle_vim_key(key) {
+                    return;
+                }
+                self.handle_edit_key(key);
+            }
             Mode::ConfirmQuit => self.handle_confirm_quit_key(key),
             Mode::ConfirmClose => self.handle_confirm_close_key(key),
             Mode::Find { .. } => self.handle_find_key(key),
@@ -1108,6 +1125,16 @@ impl App {
         } else {
             self.quit = true;
         }
+    }
+
+    /// Quits without asking, whatever is unsaved.
+    pub(crate) fn force_quit(&mut self) {
+        self.quit = true;
+    }
+
+    /// What the last search looked for.
+    pub(crate) fn last_query(&self) -> &str {
+        &self.last_query
     }
 
     /// Number of tabs with unsaved changes.

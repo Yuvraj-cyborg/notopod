@@ -165,7 +165,8 @@ impl App {
         let cursor_in_status = match &self.mode {
             Mode::Find { .. } | Mode::SaveAs { .. } | Mode::Open { .. } => true,
             Mode::Canvas(c) => c.is_typing(),
-            Mode::Edit | Mode::ConfirmQuit | Mode::ConfirmClose => false,
+            Mode::Edit => self.vim.as_ref().is_some_and(|v| v.command.is_some()),
+            Mode::ConfirmQuit | Mode::ConfirmClose => false,
         };
         if self.focus != Focus::Editor && !cursor_in_status {
             // The panel and the graph draw their own cursor; the terminal's
@@ -283,12 +284,21 @@ impl App {
                 format!(" draw  {},{}  {}", c.cursor.x, c.cursor.y, c.hint())
             }
             Mode::Edit => {
+                if let Some(vim) = &self.vim {
+                    if vim.command.is_some() {
+                        return format!(" {}", vim.status());
+                    }
+                }
+                let vim = self
+                    .vim
+                    .as_ref()
+                    .map_or_else(String::new, |v| format!(" {}  ", v.status()));
                 if let Some((message, _)) = &self.notice {
-                    return format!(" {message}");
+                    return format!("{vim} {message}");
                 }
                 let cursor = self.editor().cursor();
                 format!(
-                    " {}{}   Ln {}, Col {}",
+                    "{vim} {}{}   Ln {}, Col {}",
                     self.file_name(),
                     if self.editor().is_dirty() { " [+]" } else { "" },
                     cursor.line + 1,
