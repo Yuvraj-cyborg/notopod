@@ -39,12 +39,30 @@ A Markdown editor for the terminal. One binary, no runtime, about 2 MB.
 
 ## Install
 
-```
-cargo install --git https://github.com/Yuvraj-cyborg/notopod   # needs Rust 1.88+
-nix run github:Yuvraj-cyborg/notopod                           # or try it with Nix
+```sh
+curl -fsSL https://raw.githubusercontent.com/Yuvraj-cyborg/notopod/main/install.sh | sh
 ```
 
-Every release also ships prebuilt binaries for Linux, macOS and Windows.
+That takes the right binary for your machine from the latest release,
+checks it against the sha256 published beside it, and puts it in
+`~/.local/bin`. Nothing else on your system is touched. To choose where it
+goes, or to pin a version:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Yuvraj-cyborg/notopod/main/install.sh \
+  | sh -s -- --to /usr/local/bin --version v0.3.0
+```
+
+If you would rather not pipe the internet into a shell — fair — the script
+is [right here](install.sh) to read first, the
+[releases page](https://github.com/Yuvraj-cyborg/notopod/releases) has the
+archives for Linux, macOS and Windows, and there is always:
+
+```sh
+cargo install --git https://github.com/Yuvraj-cyborg/notopod   # needs Rust 1.88+
+nix run github:Yuvraj-cyborg/notopod                           # try it without installing
+```
+
 Inside a clone, `cargo install --path .` installs your working copy — run
 it again after pulling, since an install is a snapshot and not a link.
 
