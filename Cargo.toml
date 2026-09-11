@@ -55,6 +55,7 @@ categories = ["text-editors", "command-line-utilities"]
 # crates.io (see `publish = false` in each), so no version is needed here.
 syntax = { path = "lib/syntax" }
 canvas = { path = "lib/canvas" }
+graphics = { path = "lib/graphics" }
 render = { path = "lib/render" }
 editor = { path = "lib/editor" }
 theme = { path = "lib/theme" }
@@ -68,6 +69,7 @@ crossterm = "0.29"
 pulldown-cmark = { version = "0.13", default-features = false }
 ratatui = { version = "0.30", default-features = false }
 ropey = { version = "1.6", default-features = false, features = ["simd"] }
+rustix = { version = "1.0", features = ["event", "stdio"] }
 serde = { version = "1.0", features = ["derive"] }
 tempfile = "3.20"
 png = "0.18"
