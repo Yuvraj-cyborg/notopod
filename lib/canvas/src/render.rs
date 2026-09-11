@@ -36,7 +36,9 @@ pub fn render(
 ) -> Vec<Line<'static>> {
     let (w, h) = canvas_size(drawing, overlay, max_width);
     let mut raster = Raster::new(w, h);
-    let roughness = theme.roughness;
+    // A dot is a coarse unit: the same wobble that reads as hand-drawn
+    // in a picture reads as noise here, so braille gets about half.
+    let roughness = theme.roughness * 0.55;
 
     for (i, shape) in drawing.shapes.iter().enumerate() {
         draw_shape(

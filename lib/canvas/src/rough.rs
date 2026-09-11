@@ -69,7 +69,7 @@ impl<'a> Pen<'a> {
 
     /// Makes the stroke dashed.
     pub fn dashed(mut self, dashed: bool) -> Self {
-        self.dash = dashed.then_some((4, 3));
+        self.dash = dashed.then_some((6, 3));
         self
     }
 
@@ -290,7 +290,7 @@ pub fn hachure(
     roughness: f32,
     rng: &mut Rng,
 ) {
-    let spacing = 5;
+    let spacing = 7;
     let height = bottom - top;
     let mut pen = Pen::new(raster, color).clipped(inside);
     let mut c = left - height;
@@ -344,8 +344,8 @@ mod tests {
         assert_eq!(
             on,
             [
-                true, true, true, true, false, false, false, true, true, true, true, false, false,
-                false
+                true, true, true, true, true, true, false, false, false, true, true, true, true,
+                true
             ]
         );
     }
@@ -359,7 +359,7 @@ mod tests {
         }
         pen.line(0, 0, 7, 0);
         let on: Vec<bool> = (0..8).map(|x| r.get(x, 0)).collect();
-        assert_eq!(on, [true, true, true, true, false, false, false, true]);
+        assert_eq!(on, [true, true, true, true, true, true, false, false]);
     }
 
     #[test]
