@@ -22,6 +22,7 @@ path = "src/main.rs"
 [dependencies]
 syntax.workspace = true
 graphics.workspace = true
+notes.workspace = true
 render.workspace = true
 theme.workspace = true
 tui.workspace = true
@@ -42,7 +43,7 @@ members = ["lib/*"]
 default-members = [".", "lib/*"]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.2.1"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT"
@@ -58,6 +59,7 @@ syntax = { path = "lib/syntax" }
 canvas = { path = "lib/canvas" }
 graphics = { path = "lib/graphics" }
 render = { path = "lib/render" }
+notes = { path = "lib/notes" }
 editor = { path = "lib/editor" }
 theme = { path = "lib/theme" }
 tui = { path = "lib/tui" }
@@ -101,7 +103,14 @@ cast_precision_loss = "allow"
 [profile.dev.package."*"]
 opt-level = 2
 
+# Small and quick to start. Fat LTO and one codegen unit let the linker
+# drop what is not used; `panic = "abort"` drops the unwinding tables
+# (the terminal is still restored: the panic hook runs before the abort);
+# `opt-level = "s"` costs nothing measurable in the picture renderer.
+# Together they take about 30% off the binary.
 [profile.release]
-lto = "thin"
+lto = "fat"
 codegen-units = 1
 strip = true
+panic = "abort"
+opt-level = "s"

@@ -7,6 +7,67 @@ workspace share one version number.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-11
+
+### Added
+
+- Tabs. Every open note has one; a bar appears above the note once there
+  are two. Ctrl+T opens an empty tab, Ctrl+O asks for a name and opens
+  it (a bare name lands next to the current note with `.md` added; a
+  missing file is a note created on save), Ctrl+W closes a tab, asking
+  first if it has unsaved changes. Ctrl+PageDown / Ctrl+PageUp move
+  between tabs, and Ctrl+Tab / Ctrl+Shift+Tab where the terminal can
+  tell them apart. `notopod a.md b.md` opens both. Quitting counts every
+  dirty tab. A tab off screen keeps only its text.
+- A file panel (Ctrl+B): the folder as a tree on the left, directories
+  first, then `.md`, `.markdown` and `.txt` files, nothing hidden. Enter
+  opens a note in a tab or folds a directory, Right and Left step in and
+  out, `r` re-reads the disk, Esc goes back to the note, Ctrl+B from the
+  panel closes it. Only unfolded directories are read.
+- `[[wikilinks]]`: `[[Name]]` and `[[Name|shown]]` render as links, in
+  paragraphs, headings, cells and list items. Ctrl+] follows the link
+  under the cursor — a `[[name]]` is found anywhere under the folder
+  ignoring case, a `[text](path.md)` is relative to the note, and a name
+  with no note yet becomes a new note next to this one. URLs are shown,
+  not opened.
+- The graph of your notes (Ctrl+K, `g` in the file panel, `notopod graph
+  [DIR]`): every note in the folder as an ellipse labelled with its first
+  heading, every link as an arrow, laid out by a force simulation so
+  linked notes sit together. Hubs are filled and coloured, notes with no
+  links are dashed. Arrows move to the nearest note in that direction,
+  Tab walks them in order, Enter opens one in a tab, `r` re-reads the
+  folder, Esc puts the graph away. It is drawn by the same renderer as a
+  `draw` block: a picture in kitty, Ghostty, WezTerm and Konsole, braille
+  elsewhere, in the theme's colours. The scan stops at two thousand
+  notes and skips files over two megabytes.
+- Vim keys, off by default: `--vim` or `[keys] vim = true`. Normal mode
+  has `h j k l w b e 0 ^ $ gg G` with counts, `d y c` over them and
+  doubled for lines, `D C Y S x X r J p P u Ctrl+R >> <<`, `i a I A o O`
+  into insert mode (the ordinary editor) and Esc back, `/ n N`, `gt gT`,
+  `gf`, `ZZ ZQ`, and a `:` line with `w q q! wq x e bn bp bd b tabnew
+  files graph draw theme noh` and line numbers. Ctrl chords work in both
+  modes. No visual mode yet, since there is no selection yet.
+- `notopod themes` is a picker: the themes on the left, a sample note on
+  the right drawn in the highlighted one, drawings and all. Arrows move,
+  typing filters the list, Enter saves the choice to the config file and
+  Esc leaves it alone. A dot marks the theme in use, and your own themes
+  are in the list next to the built-in ones. `--set NAME` saves without
+  the picker; `--list` and a pipe get the plain list.
+- The editor gained `char_idx`, `position_at`, `len_chars`, `slice`,
+  `line_range` and `delete_range`.
+
+### Changed
+
+- The release binary is about 30% smaller (2.6 MB to 1.9 MB): fat LTO,
+  `panic = "abort"` and `opt-level = "s"`, which costs nothing
+  measurable in the picture renderer. Memory: about 4 MB for a note, 5
+  MB with braille drawings, 14 MB with six large pictures on screen.
+- Writing the theme keeps the rest of the config file as it was:
+  comments, spacing and other settings are untouched, and the key is
+  replaced where it stands rather than the file being rewritten.
+- `--theme`'s help says `notopod themes` shows what there is, since it
+  is a picker now.
+
 ## [0.1.2] - 2026-09-11
 
 ### Added
@@ -88,6 +149,7 @@ First release. A working editor with live preview; no diagram language yet.
 - CI on Linux, macOS and Windows; tagged releases build binaries for five
   targets.
 
-[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.2...v0.2.1
 [0.1.2]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.0...v0.1.2
 [0.1.0]: https://github.com/Yuvraj-cyborg/notopod/releases/tag/v0.1.0

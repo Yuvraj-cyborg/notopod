@@ -1,0 +1,18 @@
+[package]
+name = "notes"
+description = "The notes in a folder and the links between them, laid out as a drawing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+canvas.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -273,7 +273,7 @@ impl Builder<'_> {
                 _ => {}
             }
         }
-        (out, span)
+        (expand_wikilinks(out), span)
     }
 
     /// Concatenates text events until `end`. Used for code, HTML and metadata.
@@ -322,6 +322,60 @@ impl Builder<'_> {
                     )
             )
         })
+    }
+}
+
+/// `[[Target]]` and `[[Target|shown]]` in plain text become links to
+/// `Target`, the way Obsidian and its relatives write links between
+/// notes. CommonMark has no such syntax, so pulldown-cmark hands them
+/// over as text and they are picked out here. A `#heading` suffix is
+/// dropped from the target; the shown text is the alias, or the target.
+fn expand_wikilinks(inlines: Vec<Inline>) -> Vec<Inline> {
+    if !inlines
+        .iter()
+        .any(|i| matches!(i, Inline::Text(t) if t.contains("[[")))
+    {
+        return inlines;
+    }
+    let mut out = Vec::with_capacity(inlines.len() + 2);
+    for inline in inlines {
+        match inline {
+            Inline::Text(text) if text.contains("[[") => split_wikilinks(&text, &mut out),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+fn split_wikilinks(text: &str, out: &mut Vec<Inline>) {
+    let mut rest = text;
+    while let Some(start) = rest.find("[[") {
+        let after = &rest[start + 2..];
+        let Some(len) = after.find("]]") else {
+            break;
+        };
+        let inner = &after[..len];
+        let target = inner.split_once('|').map_or(inner, |(t, _)| t);
+        let target = target.split('#').next().unwrap_or(target).trim();
+        if inner.contains(['[', ']', '\n']) || target.is_empty() {
+            // Not a link: keep the brackets and look past them.
+            push_text(out, &rest[..start + 2]);
+            rest = after;
+            continue;
+        }
+        let shown = inner.split_once('|').map_or(target, |(_, s)| s.trim());
+        let shown = if shown.is_empty() { target } else { shown };
+        if start > 0 {
+            push_text(out, &rest[..start]);
+        }
+        out.push(Inline::Link {
+            url: target.to_owned(),
+            content: vec![Inline::Text(shown.to_owned())],
+        });
+        rest = &after[len + 2..];
+    }
+    if !rest.is_empty() {
+        push_text(out, rest);
     }
 }
 
@@ -527,6 +581,50 @@ mod tests {
         let k = kinds("---\ntitle: x\n---\n\n# H\n");
         assert_eq!(k[0], BlockKind::Metadata("title: x\n".into()));
         assert!(matches!(k[1], BlockKind::Heading { level: 1, .. }));
+    }
+
+    #[test]
+    fn wikilinks_become_links() {
+        let link = |url: &str, shown: &str| Inline::Link {
+            url: url.into(),
+            content: vec![Inline::Text(shown.into())],
+        };
+        let k = kinds("see [[Plan]] and [[ideas/Old|the old one]], [[Plan#Goals]].\n");
+        assert_eq!(
+            k[0],
+            BlockKind::Paragraph(vec![
+                Inline::Text("see ".into()),
+                link("Plan", "Plan"),
+                Inline::Text(" and ".into()),
+                link("ideas/Old", "the old one"),
+                Inline::Text(", ".into()),
+                link("Plan", "Plan"),
+                Inline::Text(".".into()),
+            ])
+        );
+
+        // Inside emphasis too; brackets that are not a link stay text.
+        let k = kinds("*[[A]]* [[]] [[x\n");
+        assert_eq!(
+            k[0],
+            BlockKind::Paragraph(vec![
+                Inline::Emphasis(vec![link("A", "A")]),
+                Inline::Text(" [[]] [[x".into()),
+            ])
+        );
+        // A real link is left alone.
+        let k = kinds("[t](u) [[W]]\n");
+        assert_eq!(
+            k[0],
+            BlockKind::Paragraph(vec![
+                Inline::Link {
+                    url: "u".into(),
+                    content: vec![Inline::Text("t".into())]
+                },
+                Inline::Text(" ".into()),
+                link("W", "W"),
+            ])
+        );
     }
 
     #[test]
