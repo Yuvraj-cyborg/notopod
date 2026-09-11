@@ -61,6 +61,7 @@ theme = { path = "lib/theme" }
 tui = { path = "lib/tui" }
 
 # External
+ab_glyph = "0.2"
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 crossterm = "0.29"
@@ -69,6 +70,8 @@ ratatui = { version = "0.30", default-features = false }
 ropey = { version = "1.6", default-features = false, features = ["simd"] }
 serde = { version = "1.0", features = ["derive"] }
 tempfile = "3.20"
+png = "0.18"
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 toml = "1.1"
 unicode-width = "0.2"
 
@@ -89,6 +92,11 @@ cast_possible_truncation = "allow"
 cast_possible_wrap = "allow"
 cast_sign_loss = "allow"
 cast_precision_loss = "allow"
+
+# Pictures are rasterised and PNG-encoded on every keystroke while
+# drawing; unoptimised image code makes debug builds feel sluggish.
+[profile.dev.package."*"]
+opt-level = 2
 
 [profile.release]
 lto = "thin"

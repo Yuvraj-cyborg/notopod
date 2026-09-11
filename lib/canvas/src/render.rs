@@ -34,20 +34,7 @@ pub fn render(
     max_width: usize,
     overlay: Option<&Overlay<'_>>,
 ) -> Vec<Line<'static>> {
-    let (mut w, mut h) = drawing.extent();
-    if let Some(o) = overlay {
-        w = w.max(o.min_size.0);
-        h = h.max(o.min_size.1);
-        if let Some(c) = o.cursor {
-            w = w.max(c.x + 2);
-            h = h.max(c.y + 2);
-        }
-        if let Some(b) = o.preview.and_then(Shape::bounds) {
-            w = w.max(b.right() + 2);
-            h = h.max(b.bottom() + 2);
-        }
-    }
-    let w = w.min(max_width.max(1) as i32);
+    let (w, h) = canvas_size(drawing, overlay, max_width);
     let mut raster = Raster::new(w, h);
     let roughness = theme.roughness;
 
@@ -105,9 +92,37 @@ pub fn render_source(src: &str, theme: &Theme, max_width: usize) -> Vec<Line<'st
     render(&drawing, theme, max_width, None)
 }
 
+/// Columns and rows a drawing takes on screen: its extent, grown to fit
+/// the overlay's minimum size, cursor and preview, cropped to
+/// `max_width` columns.
+pub fn canvas_size(
+    drawing: &Drawing,
+    overlay: Option<&Overlay<'_>>,
+    max_width: usize,
+) -> (i32, i32) {
+    let (mut w, mut h) = drawing.extent();
+    if let Some(o) = overlay {
+        w = w.max(o.min_size.0);
+        h = h.max(o.min_size.1);
+        if let Some(c) = o.cursor {
+            w = w.max(c.x + 2);
+            h = h.max(c.y + 2);
+        }
+        if let Some(b) = o.preview.and_then(Shape::bounds) {
+            w = w.max(b.right() + 2);
+            h = h.max(b.bottom() + 2);
+        }
+    }
+    (w.min(max_width.max(1) as i32), h)
+}
+
 /// The colour of a shape: the override, its own `color=`, or the theme's
 /// default stroke.
-fn shape_color(shape: &Shape, override_color: Option<Color>, theme: &Theme) -> Option<Color> {
+pub(crate) fn shape_color(
+    shape: &Shape,
+    override_color: Option<Color>,
+    theme: &Theme,
+) -> Option<Color> {
     override_color.or_else(|| {
         shape
             .attrs()
@@ -373,7 +388,7 @@ fn centred_text(rect: Rect, label: &str) -> (i32, i32) {
 }
 
 /// Point halfway along a polyline, by length.
-fn midpoint(dots: &[(f32, f32)]) -> (f32, f32) {
+pub(crate) fn midpoint(dots: &[(f32, f32)]) -> (f32, f32) {
     let total: f32 = dots
         .windows(2)
         .map(|w| ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt())
@@ -394,7 +409,7 @@ fn midpoint(dots: &[(f32, f32)]) -> (f32, f32) {
 }
 
 /// Truncates `text` to `width` columns, ending with `…` when cut.
-fn fit(text: &str, width: usize) -> String {
+pub(crate) fn fit(text: &str, width: usize) -> String {
     if text.width() <= width {
         return text.to_owned();
     }
