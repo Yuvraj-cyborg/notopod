@@ -34,15 +34,21 @@ use theme::Theme;
 pub use app::App;
 pub use picker::{pick_theme, Entry as ThemeEntry};
 
-/// Opens `paths` (or an empty buffer) in the editor, one tab each, and
-/// runs until the user quits.
+/// Opens `paths` in the editor and runs until the user quits.
+///
+/// Notes get a tab each. A folder opens the file panel on it instead, so
+/// `notopod ~/notes` starts by showing you what is there; with no paths
+/// at all the editor starts on an empty note.
 ///
 /// Takes over the terminal for the duration and restores it afterwards,
 /// including on panic. `graphics` decides whether drawings are shown as
 /// pictures; in [`Mode::Auto`] the terminal is asked. `vim` turns on vim
 /// keys.
 pub fn run(paths: &[&Path], theme: Theme, graphics: Mode, vim: bool) -> Result<()> {
-    let editor = match paths.first() {
+    // A path that is not there yet is a note to create, not a folder.
+    let (folders, notes): (Vec<&Path>, Vec<&Path>) =
+        paths.iter().copied().partition(|p| p.is_dir());
+    let editor = match notes.first() {
         Some(p) => Editor::open(p).with_context(|| format!("cannot open {}", p.display()))?,
         None => Editor::new(),
     };
@@ -53,10 +59,13 @@ pub fn run(paths: &[&Path], theme: Theme, graphics: Mode, vim: bool) -> Result<(
     let mut app = App::new(editor, theme)
         .with_graphics(graphics)
         .with_vim(vim);
-    for path in paths.iter().skip(1) {
+    for path in notes.iter().skip(1) {
         app.open_path(path);
     }
     app.switch_tab(0);
+    if let Some(folder) = folders.first() {
+        app.open_folder(folder);
+    }
 
     // Terminals that speak the kitty keyboard protocol can tell Ctrl+Tab
     // from Tab; the others just do not get that shortcut.

@@ -167,6 +167,8 @@ fn tokenize(line: &str) -> Option<Vec<Token>> {
         if c.is_whitespace() {
             chars.next();
         } else if c == '#' {
+            // A comment, but only where a token starts: inside one, `#`
+            // is an ordinary character, so `color=#4c7fd4` survives.
             break;
         } else if c == '"' {
             chars.next();
@@ -183,7 +185,7 @@ fn tokenize(line: &str) -> Option<Vec<Token>> {
         } else {
             let mut w = String::new();
             while let Some(&ch) = chars.peek() {
-                if ch.is_whitespace() || ch == '"' || ch == '#' {
+                if ch.is_whitespace() || ch == '"' {
                     break;
                 }
                 w.push(ch);
@@ -470,5 +472,26 @@ text 5,12 \"free text\" color=muted
             ]
         );
         assert!(tokenize("text 1,2 \"open").is_none());
+    }
+
+    #[test]
+    fn hex_colours_survive_the_comment_rule() {
+        // `#` starts a comment between tokens, but not inside one.
+        assert_eq!(
+            tokenize("rect 0,0 2x2 color=#4c7fd4 # the note").unwrap(),
+            vec![
+                Token::Word("rect".into()),
+                Token::Word("0,0".into()),
+                Token::Word("2x2".into()),
+                Token::Word("color=#4c7fd4".into()),
+            ]
+        );
+        let d = parse("rect 0,0 2x2 color=#4c7fd4\n");
+        assert!(
+            matches!(&d.shapes[0], Shape::Box { attrs, .. } if attrs.color.as_deref() == Some("#4c7fd4")),
+            "{:?}",
+            d.shapes[0]
+        );
+        assert_eq!(to_source(&d), "rect 0,0 2x2 color=#4c7fd4\n");
     }
 }

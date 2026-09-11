@@ -115,6 +115,11 @@ pub struct App {
     pub(crate) notice: Option<(String, Instant)>,
     pub(crate) body_height: usize,
     pub(crate) body_width: usize,
+    /// The folder named on the command line, when there was one. The
+    /// file panel and the graph start there whatever note is on screen,
+    /// so `notopod ~/notes` keeps working on `~/notes` after you open a
+    /// note from somewhere else.
+    root: Option<PathBuf>,
     /// The file panel, while it is open.
     pub(crate) files: Option<FilePanel>,
     /// The graph screen, while it is up.
@@ -162,6 +167,7 @@ impl App {
             notice: None,
             body_height: 0,
             body_width: 80,
+            root: None,
             files: None,
             graph: None,
             focus: Focus::Editor,
@@ -270,6 +276,20 @@ impl App {
                 false
             }
         }
+    }
+
+    /// Opens the file panel on `root` and gives it the keyboard: what
+    /// `notopod DIR` does. The folder stays the panel's and the graph's
+    /// starting point for the rest of the session.
+    pub fn open_folder(&mut self, root: &Path) {
+        let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        self.root = Some(root.clone());
+        let mut panel = FilePanel::new(root);
+        if let Some(note) = self.current_note_path() {
+            panel.reveal(&note);
+        }
+        self.files = Some(panel);
+        self.focus = Focus::Files;
     }
 
     /// Opens an empty, unnamed note in a new tab.
@@ -535,28 +555,41 @@ impl App {
         }
     }
 
-    /// Where the panel starts: the working directory when the current
-    /// note is inside it, otherwise the note's own directory. Also the
-    /// note's path in the same terms, for putting the cursor on it.
+    /// Where the panel starts: the folder from the command line when one
+    /// was given, otherwise the working directory when the note is inside
+    /// it, otherwise the note's own folder. Also the note's path in the
+    /// same terms, for putting the cursor on it.
     fn panel_root(&self) -> (PathBuf, Option<PathBuf>) {
+        let note = self.current_note_path();
+        if let Some(root) = &self.root {
+            return (root.clone(), note);
+        }
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let cwd = std::fs::canonicalize(&cwd).unwrap_or(cwd);
-        let Some(path) = self.editor().path() else {
+        let Some(abs) = note else {
             return (cwd, None);
         };
+        let dir = abs.parent().map_or_else(|| cwd.clone(), Path::to_path_buf);
+        if dir.starts_with(&cwd) {
+            (cwd, Some(abs))
+        } else {
+            (dir, Some(abs))
+        }
+    }
+
+    /// The note on screen as an absolute path with its directory resolved
+    /// through symlinks, so it can be matched against a panel root that
+    /// was resolved the same way.
+    fn current_note_path(&self) -> Option<PathBuf> {
+        let path = self.editor().path()?;
         let abs = if path.is_absolute() {
             path.to_path_buf()
         } else {
-            cwd.join(path)
+            std::env::current_dir().ok()?.join(path)
         };
-        let dir = abs.parent().map_or_else(|| cwd.clone(), Path::to_path_buf);
-        let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
-        let note = abs.file_name().map(|n| dir.join(n));
-        if dir.starts_with(&cwd) {
-            (cwd, note)
-        } else {
-            (dir, note)
-        }
+        let dir = abs.parent()?;
+        let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        abs.file_name().map(|n| dir.join(n))
     }
 
     fn handle_files_key(&mut self, key: KeyEvent) {
@@ -1517,6 +1550,62 @@ pub(crate) mod tests {
         ctrl(&mut a, 'b');
         assert!(a.files.is_none());
         assert_eq!(a.focus, Focus::Editor);
+    }
+
+    #[test]
+    fn a_folder_opens_the_panel_and_stays_its_root() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = std::fs::canonicalize(dir.path()).expect("canonicalize");
+        std::fs::create_dir_all(root.join("sub")).expect("mkdir");
+        std::fs::write(root.join("sub/deep.md"), "# deep\n").expect("write");
+        std::fs::write(root.join("top.md"), "# top\n").expect("write");
+
+        let mut a = app("");
+        a.open_folder(&root);
+        assert_eq!(a.focus, Focus::Files);
+        assert_eq!(a.files.as_ref().expect("panel").root(), root.as_path());
+
+        // Directories first: sub/, then top.md. Enter opens the note.
+        key(&mut a, KeyCode::Down);
+        key(&mut a, KeyCode::Enter);
+        assert_eq!(a.focus, Focus::Editor);
+        assert_eq!(a.editor().text(), "# top\n");
+
+        // Closing and reopening the panel comes back to the folder that
+        // was asked for, not to the note's own folder.
+        ctrl(&mut a, 'b');
+        ctrl(&mut a, 'b');
+        assert!(a.files.is_none());
+        ctrl(&mut a, 'b');
+        let panel = a.files.as_ref().expect("panel");
+        assert_eq!(panel.root(), root.as_path());
+        assert_eq!(panel.selected().map(|r| r.name.as_str()), Some("top.md"));
+    }
+
+    #[test]
+    fn a_note_outside_the_folder_leaves_the_root_alone() {
+        let notes = tempfile::tempdir().expect("tempdir");
+        let other = tempfile::tempdir().expect("tempdir");
+        let root = std::fs::canonicalize(notes.path()).expect("canonicalize");
+        std::fs::write(root.join("in.md"), "# in\n").expect("write");
+        let outside = std::fs::canonicalize(other.path())
+            .expect("canonicalize")
+            .join("out.md");
+        std::fs::write(&outside, "# out\n").expect("write");
+
+        let mut a = app("");
+        a.open_folder(&root);
+        assert!(a.open_path(&outside));
+
+        // Close the panel and open it again from the note outside.
+        ctrl(&mut a, 'b');
+        assert!(a.files.is_none());
+        ctrl(&mut a, 'b');
+        // It still shows the folder that was asked for, with its own
+        // first note under the cursor, not the open note's folder.
+        let panel = a.files.as_ref().expect("panel");
+        assert_eq!(panel.root(), root.as_path());
+        assert_eq!(panel.selected().map(|r| r.name.as_str()), Some("in.md"));
     }
 
     #[test]

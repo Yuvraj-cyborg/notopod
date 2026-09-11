@@ -1,0 +1,18 @@
+# notopod's logo, drawn in notopod's own ```draw language.
+# Colours are fixed so the mark looks the same on any background.
+# Two notes, the link between them, and the pencil that drew it.
+rect 0,11 11x6 round color=#6c9ce8
+line 2,13 -- 8,13 color=#8a93a6
+line 2,15 -- 6,15 color=#8a93a6
+line 11,14 -> 15,14 color=#6c9ce8
+rect 22,11 11x6 round color=#6c9ce8
+# the pencil: graphite, cone, collar, body, band, ferrule, eraser
+line 15,13 -- 17,12 -- 16,11 -- 15,13 color=#4a5468
+line 15,13 -- 20,12 color=#e8b44a
+line 15,13 -- 16,8 color=#e8b44a
+line 20,12 -- 16,8 color=#e8b44a
+line 20,12 -- 25,7 color=#e8b44a
+line 16,8 -- 21,3 color=#e8b44a
+line 24,8 -- 20,4 color=#8a93a6
+line 25,7 -- 21,3 color=#8a93a6
+line 25,7 -- 27,5 -- 23,1 -- 21,3 color=#e2796b

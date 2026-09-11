@@ -7,6 +7,30 @@ workspace share one version number.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-11
+
+### Added
+
+- `notopod DIR` opens a folder. The file panel comes up on it with the
+  keyboard, so you start by seeing what is there instead of having to
+  name a note. The folder stays where the panel and the graph start for
+  the rest of the session, whatever note you open from wherever, so
+  opening a note from somewhere else no longer drags the panel with it.
+  `notopod ~/notes plan.md` does both: the folder on the left, the note
+  in a tab.
+
+### Fixed
+
+- `color=#rrggbb` in a ```` ```draw ```` block. `#` starts a comment, and
+  the tokenizer split words on it wherever it appeared, so a hex colour
+  was cut to `color=` and the whole line was left undrawn. It is now only
+  a comment where a word starts.
+
+### Changed
+
+- The README is shorter; the full drawing reference moved to
+  [docs/DRAWING.md](docs/DRAWING.md).
+
 ## [0.2.1] - 2026-09-11
 
 ### Added
@@ -149,7 +173,8 @@ First release. A working editor with live preview; no diagram language yet.
 - CI on Linux, macOS and Windows; tagged releases build binaries for five
   targets.
 
-[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.2...v0.2.1
 [0.1.2]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.0...v0.1.2
 [0.1.0]: https://github.com/Yuvraj-cyborg/notopod/releases/tag/v0.1.0

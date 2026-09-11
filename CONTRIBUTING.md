@@ -91,7 +91,7 @@ dependencies. Users get releases, Nix, or `cargo install --git`.
 | `lib/editor` | Rope buffer, cursor, undo history, list-aware Enter, search, save |
 | `lib/notes` | Links between the notes in a folder; the graph and its layout |
 | `lib/tui` | App state, tabs, key handling (classic and vim), screen layout, file panel, graph screen, canvas mode, theme picker |
-| `docs/` | Architecture notes |
+| `docs/` | Architecture notes, the drawing reference, and the logo (`logo.draw` is its source) |
 
 New library crates go in `lib/<name>` with a short name and
 `publish = false`, and get one line in the tables here and in the README.
