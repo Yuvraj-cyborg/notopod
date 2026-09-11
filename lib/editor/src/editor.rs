@@ -409,7 +409,7 @@ impl Editor {
         let name = target
             .file_name()
             .map_or_else(|| "note".to_owned(), |n| n.to_string_lossy().into_owned());
-        let tmp = dir.join(format!(".{name}.notopad-tmp"));
+        let tmp = dir.join(format!(".{name}.notopod-tmp"));
 
         let result = (|| {
             let mut file = fs::File::create(&tmp)?;
@@ -722,7 +722,7 @@ mod tests {
 
         let e2 = Editor::open(&path).unwrap();
         assert_eq!(e2.text(), "# hi\n");
-        assert!(!dir.path().join(".note.md.notopad-tmp").exists());
+        assert!(!dir.path().join(".note.md.notopod-tmp").exists());
     }
 
     #[test]
