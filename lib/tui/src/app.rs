@@ -16,6 +16,7 @@ use theme::Theme;
 
 use crate::canvas_mode::{self, CanvasState, Placing, Tool};
 use crate::files::FilePanel;
+use crate::links::{self, Link};
 use crate::view::{self, Override, Source, View};
 
 /// How long a status-bar message stays visible.
@@ -580,6 +581,51 @@ impl App {
         }
     }
 
+    // ----- links -----
+
+    /// Ctrl+]: opens the note the link under the cursor points at. A
+    /// `[[name]]` is looked up by name below the panel's root (or where
+    /// the panel would start); a path is taken relative to the current
+    /// note. A note that does not exist yet is created on save, the way
+    /// wiki links work. URLs are shown, not opened.
+    pub(crate) fn follow_link(&mut self) {
+        let cursor = self.editor().cursor();
+        let text = self.editor().line(cursor.line);
+        let Some(link) = links::link_at(&text, cursor.col) else {
+            self.notify("No link under the cursor");
+            return;
+        };
+        let note_dir = self
+            .editor()
+            .path()
+            .and_then(Path::parent)
+            .filter(|d| !d.as_os_str().is_empty())
+            .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        let target = match link {
+            Link::Url(url) if links::has_scheme(&url) => {
+                self.notify(format!("Link: {url}"));
+                return;
+            }
+            Link::Url(rel) => {
+                let rel = rel.split('#').next().unwrap_or(&rel);
+                let rel = rel.trim_matches(['<', '>']);
+                if rel.is_empty() {
+                    return;
+                }
+                note_dir.join(rel)
+            }
+            Link::Wiki(name) => {
+                let root = self
+                    .files
+                    .as_ref()
+                    .map_or_else(|| self.panel_root().0, |p| p.root().to_path_buf());
+                links::find_note(&root, &name)
+                    .unwrap_or_else(|| note_dir.join(with_md(PathBuf::from(name))))
+            }
+        };
+        self.open_path(&target);
+    }
+
     /// Paths of the notes open in tabs, for marking them in the panel.
     pub(crate) fn open_paths(&self) -> Vec<PathBuf> {
         self.tabs
@@ -615,6 +661,9 @@ impl App {
             (KeyCode::Char('f'), true, _) => self.start_find(),
             (KeyCode::Char('g'), true, _) => self.find_next(),
             (KeyCode::Char('d'), true, _) => self.enter_canvas(),
+            // Ctrl+] arrives as Ctrl+5 from terminals without the kitty
+            // keyboard protocol; both mean the same here.
+            (KeyCode::Char(']' | '5'), true, _) => self.follow_link(),
             (KeyCode::Left, true, _) | (KeyCode::Left, _, true) => self.editor_mut().word_left(),
             (KeyCode::Right, true, _) | (KeyCode::Right, _, true) => {
                 self.editor_mut().word_right();
@@ -1360,6 +1409,59 @@ pub(crate) mod tests {
         ctrl(&mut a, 'b');
         assert!(a.files.is_none());
         assert_eq!(a.focus, Focus::Editor);
+    }
+
+    #[test]
+    fn following_a_link_opens_the_note_creating_it_if_needed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("sub")).expect("mkdir");
+        std::fs::write(
+            dir.path().join("index.md"),
+            "go to [[Sub Note]] or [here](sub/other.md) or [[Fresh]] or [web](https://x.y)\n",
+        )
+        .expect("write");
+        std::fs::write(dir.path().join("sub/Sub Note.md"), "# sub\n").expect("write");
+        std::fs::write(dir.path().join("sub/other.md"), "# other\n").expect("write");
+
+        let mut a = app("");
+        assert!(a.open_path(&dir.path().join("index.md")));
+
+        // A [[name]] is found anywhere under the folder.
+        a.editor_mut().set_cursor(Position::new(0, 9));
+        ctrl(&mut a, ']');
+        assert_eq!(a.editor().text(), "# sub\n");
+        a.switch_tab(0);
+
+        // A path is relative to the note.
+        a.editor_mut().set_cursor(Position::new(0, 24));
+        ctrl(&mut a, '5');
+        assert_eq!(a.editor().text(), "# other\n");
+        a.switch_tab(0);
+
+        // A name with no note yet becomes a new note next to this one.
+        a.editor_mut().set_cursor(Position::new(0, 46));
+        ctrl(&mut a, ']');
+        assert_eq!(a.editor().text(), "");
+        assert_eq!(
+            a.editor().path(),
+            Some(dir.path().join("Fresh.md").as_path())
+        );
+        a.switch_tab(0);
+
+        // URLs are reported, not opened; empty space says so too.
+        a.editor_mut().set_cursor(Position::new(0, 60));
+        ctrl(&mut a, ']');
+        assert_eq!(a.tabs().len(), 4);
+        assert!(a
+            .notice
+            .as_ref()
+            .is_some_and(|(m, _)| m.contains("https://x.y")));
+        a.editor_mut().set_cursor(Position::new(0, 0));
+        ctrl(&mut a, ']');
+        assert!(a
+            .notice
+            .as_ref()
+            .is_some_and(|(m, _)| m.contains("No link")));
     }
 
     #[test]
