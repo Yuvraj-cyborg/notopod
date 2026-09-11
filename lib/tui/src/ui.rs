@@ -6,9 +6,11 @@ use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
+use render::Drawings;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Focus, Mode};
+use crate::graph_view::GraphView;
 
 /// The screen has to be at least this wide for the file panel to be worth
 /// the room it takes from the note.
@@ -37,7 +39,11 @@ impl App {
         self.body_height = usize::from(body.height);
         self.body_width = usize::from(body.width);
 
-        self.draw_note(frame, body);
+        if self.focus == Focus::Graph && self.graph.is_some() {
+            self.draw_graph(frame, body);
+        } else {
+            self.draw_note(frame, body);
+        }
         if let Some(panel) = panel {
             self.draw_files(frame, panel);
         }
@@ -45,6 +51,47 @@ impl App {
             self.draw_tabs(frame, tabs);
         }
         self.draw_status(frame, status);
+    }
+
+    /// The graph of notes in place of the note: a heading, then the
+    /// picture, scrolled so the selected note is on screen.
+    fn draw_graph(&mut self, frame: &mut Frame, body: Rect) {
+        let width = usize::from(body.width).max(1);
+        let height = usize::from(body.height);
+        let theme = self.theme.clone();
+        let Some(view) = &mut self.graph else {
+            return;
+        };
+        view.fit(width);
+        let overlay = view.overlay();
+        let lines = self
+            .graphics
+            .draw(view.drawing(), &theme, width, overlay.as_ref());
+        let pending = self.graphics.take_pending();
+        if !pending.is_empty() {
+            let mut out = std::io::stdout();
+            let _ = out.write_all(pending.as_bytes());
+            let _ = out.flush();
+        }
+
+        let picture_height = height.saturating_sub(1);
+        if let Some((top, bottom)) = view.selected_rows() {
+            if top < view.scroll {
+                view.scroll = top;
+            }
+            if picture_height > 0 && bottom >= view.scroll + picture_height {
+                view.scroll = bottom + 1 - picture_height;
+            }
+        }
+        view.scroll = view.scroll.min(lines.len().saturating_sub(picture_height));
+
+        let heading = Line::styled(
+            format!(" {}   {}", view.summary(), view.root().display()),
+            theme.heading[1],
+        );
+        let mut rows = vec![heading];
+        rows.extend(lines.into_iter().skip(view.scroll).take(picture_height));
+        frame.render_widget(Paragraph::new(Text::from(rows)), body);
     }
 
     /// The file panel with a divider on its right.
@@ -120,8 +167,9 @@ impl App {
             Mode::Canvas(c) => c.is_typing(),
             Mode::Edit | Mode::ConfirmQuit | Mode::ConfirmClose => false,
         };
-        if self.focus == Focus::Files && !cursor_in_status {
-            // The panel draws its own cursor row; the terminal's stays hidden.
+        if self.focus != Focus::Editor && !cursor_in_status {
+            // The panel and the graph draw their own cursor; the terminal's
+            // stays hidden.
         } else if cursor_in_status {
             let status_y = body.y + body.height;
             let x = self.status_left().width().min(usize::from(body.width));
@@ -186,6 +234,17 @@ impl App {
     }
 
     pub(crate) fn status_left(&self) -> String {
+        if self.focus == Focus::Graph {
+            if let Some((message, _)) = &self.notice {
+                return format!(" {message}");
+            }
+            let picked = self
+                .graph
+                .as_ref()
+                .and_then(GraphView::selected_summary)
+                .unwrap_or_default();
+            return format!(" graph  {picked}");
+        }
         if self.focus == Focus::Files {
             if let Some((message, _)) = &self.notice {
                 return format!(" {message}");
@@ -240,8 +299,11 @@ impl App {
     }
 
     fn status_right(&self) -> String {
+        if self.focus == Focus::Graph {
+            return "←↑↓→ pick  Tab next  Enter open  r re-read  Esc back ".to_owned();
+        }
         if self.focus == Focus::Files {
-            return "Enter open  ← → fold  r re-read  Esc back  ^B close ".to_owned();
+            return "Enter open  ← → fold  g graph  r re-read  Esc back  ^B close ".to_owned();
         }
         match &self.mode {
             Mode::Find { .. } => "Enter next   Esc done ".to_owned(),
@@ -250,7 +312,7 @@ impl App {
             Mode::ConfirmQuit | Mode::ConfirmClose => String::new(),
             Mode::Canvas(_) => "Esc done ".to_owned(),
             Mode::Edit => format!(
-                "^S save  ^O open  ^B files  ^Q quit  ^F find  ^D draw  ^Z undo  ^P preview {} ",
+                "^S save  ^O open  ^B files  ^K graph  ^Q quit  ^F find  ^D draw  ^Z undo  ^P preview {} ",
                 if self.preview { "on" } else { "off" }
             ),
         }

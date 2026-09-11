@@ -907,6 +907,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "notes"
+version = "0.1.2"
+dependencies = [
+ "canvas",
+ "tempfile",
+]
+
+[[package]]
 name = "notopod"
 version = "0.1.2"
 dependencies = [
@@ -914,6 +922,7 @@ dependencies = [
  "clap",
  "crossterm",
  "graphics",
+ "notes",
  "render",
  "serde",
  "syntax",
@@ -1846,9 +1855,11 @@ dependencies = [
  "canvas",
  "editor",
  "graphics",
+ "notes",
  "ratatui",
  "render",
  "syntax",
+ "tempfile",
  "theme",
  "unicode-width",
 ]

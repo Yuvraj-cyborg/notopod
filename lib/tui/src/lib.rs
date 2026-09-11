@@ -11,6 +11,7 @@
 mod app;
 mod canvas_mode;
 mod files;
+mod graph_view;
 mod links;
 mod picker;
 mod ui;

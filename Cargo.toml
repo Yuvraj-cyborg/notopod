@@ -22,6 +22,7 @@ path = "src/main.rs"
 [dependencies]
 syntax.workspace = true
 graphics.workspace = true
+notes.workspace = true
 render.workspace = true
 theme.workspace = true
 tui.workspace = true
@@ -58,6 +59,7 @@ syntax = { path = "lib/syntax" }
 canvas = { path = "lib/canvas" }
 graphics = { path = "lib/graphics" }
 render = { path = "lib/render" }
+notes = { path = "lib/notes" }
 editor = { path = "lib/editor" }
 theme = { path = "lib/theme" }
 tui = { path = "lib/tui" }

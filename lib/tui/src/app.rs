@@ -16,6 +16,7 @@ use theme::Theme;
 
 use crate::canvas_mode::{self, CanvasState, Placing, Tool};
 use crate::files::FilePanel;
+use crate::graph_view::GraphView;
 use crate::links::{self, Link};
 use crate::view::{self, Override, Source, View};
 
@@ -29,6 +30,8 @@ pub(crate) enum Focus {
     Editor,
     /// The file panel on the left.
     Files,
+    /// The graph of notes, in place of the note.
+    Graph,
 }
 
 /// What the keyboard is currently driving.
@@ -113,6 +116,8 @@ pub struct App {
     pub(crate) body_width: usize,
     /// The file panel, while it is open.
     pub(crate) files: Option<FilePanel>,
+    /// The graph screen, while it is up.
+    pub(crate) graph: Option<GraphView>,
     pub(crate) focus: Focus,
     last_query: String,
     quit: bool,
@@ -155,6 +160,7 @@ impl App {
             body_height: 0,
             body_width: 80,
             files: None,
+            graph: None,
             focus: Focus::Editor,
             last_query: String::new(),
             quit: false,
@@ -428,9 +434,10 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
-        if self.focus == Focus::Files {
-            self.handle_files_key(key);
-            return;
+        match self.focus {
+            Focus::Files => return self.handle_files_key(key),
+            Focus::Graph => return self.handle_graph_key(key),
+            Focus::Editor => {}
         }
         match self.mode {
             Mode::Edit => self.handle_edit_key(key),
@@ -480,6 +487,7 @@ impl App {
             KeyCode::Char('t') => self.new_tab(),
             KeyCode::Char('w') => self.request_close_tab(),
             KeyCode::Char('b') => self.toggle_files(),
+            KeyCode::Char('k') => self.toggle_graph(),
             KeyCode::PageDown | KeyCode::Tab if !shift => self.next_tab(),
             KeyCode::PageUp | KeyCode::BackTab | KeyCode::Tab => self.prev_tab(),
             _ => return false,
@@ -497,8 +505,8 @@ impl App {
                 self.files = None;
                 self.focus = Focus::Editor;
             }
-            (Focus::Editor, Some(_)) => self.focus = Focus::Files,
-            (Focus::Editor, None) => {
+            (Focus::Editor | Focus::Graph, Some(_)) => self.focus = Focus::Files,
+            (Focus::Editor | Focus::Graph, None) => {
                 let (root, note) = self.panel_root();
                 let mut panel = FilePanel::new(root);
                 if let Some(note) = note {
@@ -558,11 +566,84 @@ impl App {
                 panel.refresh();
                 self.notice = Some(("Files re-read".to_owned(), Instant::now()));
             }
+            KeyCode::Char('g') => self.toggle_graph(),
             KeyCode::Esc | KeyCode::Tab => self.focus = Focus::Editor,
             _ => {}
         }
         if open_note {
             self.open_selected_file();
+        }
+    }
+
+    // ----- graph -----
+
+    /// Ctrl+K (or `g` in the file panel): shows the graph of the notes
+    /// around this one, or puts it away again.
+    pub(crate) fn toggle_graph(&mut self) {
+        if self.graph.is_some() {
+            self.graph = None;
+            self.focus = Focus::Editor;
+            return;
+        }
+        let root = self
+            .files
+            .as_ref()
+            .map_or_else(|| self.panel_root().0, |p| p.root().to_path_buf());
+        let width = self.body_width.max(20);
+        let mut view = GraphView::new(&root, width);
+        // Start on the note being edited when it is in the picture.
+        if let Some(path) = self.editor().path() {
+            let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            view.select_path(&path);
+        }
+        self.graph = Some(view);
+        self.focus = Focus::Graph;
+    }
+
+    fn handle_graph_key(&mut self, key: KeyEvent) {
+        if self.handle_global_key(key) {
+            return;
+        }
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        let page = self.body_height.saturating_sub(2).max(1);
+        let Some(view) = &mut self.graph else {
+            self.focus = Focus::Editor;
+            return;
+        };
+        let mut open_note = false;
+        match key.code {
+            KeyCode::Left | KeyCode::Char('h') => view.step(-1, 0),
+            KeyCode::Right | KeyCode::Char('l') => view.step(1, 0),
+            KeyCode::Up | KeyCode::Char('k') => view.step(0, -1),
+            KeyCode::Down | KeyCode::Char('j') => view.step(0, 1),
+            KeyCode::Tab if !shift => view.next(1),
+            KeyCode::BackTab | KeyCode::Tab => view.next(-1),
+            KeyCode::PageUp => view.scroll = view.scroll.saturating_sub(page),
+            KeyCode::PageDown => view.scroll += page,
+            KeyCode::Enter => open_note = true,
+            KeyCode::Char('r') => {
+                view.rescan();
+                self.notice = Some(("Notes re-read".to_owned(), Instant::now()));
+            }
+            KeyCode::Esc | KeyCode::Char('g' | 'q') => {
+                self.graph = None;
+                self.focus = Focus::Editor;
+            }
+            _ => {}
+        }
+        if open_note {
+            let Some(path) = self
+                .graph
+                .as_ref()
+                .and_then(GraphView::selected_path)
+                .map(Path::to_path_buf)
+            else {
+                return;
+            };
+            if self.open_path(&path) {
+                self.graph = None;
+                self.focus = Focus::Editor;
+            }
         }
     }
 

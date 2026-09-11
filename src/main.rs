@@ -50,6 +50,17 @@ enum Command {
         #[arg(long)]
         no_color: bool,
     },
+    /// Draw the graph of the notes in a folder and the links between them.
+    Graph {
+        /// Folder to scan. The working directory when left out.
+        dir: Option<PathBuf>,
+        /// Draw at this many columns instead of the terminal width.
+        #[arg(long)]
+        width: Option<u16>,
+        /// Plain text, no colours.
+        #[arg(long)]
+        no_color: bool,
+    },
     /// Pick a theme, list them, or print one as a TOML file to start your
     /// own from.
     Themes {
@@ -80,6 +91,11 @@ fn main() -> Result<()> {
             width,
             no_color,
         }) => render_note(&file, width, no_color, &theme()?, graphics()?),
+        Some(Command::Graph {
+            dir,
+            width,
+            no_color,
+        }) => graph(dir.as_deref(), width, no_color, &theme()?, graphics()?),
         Some(Command::Themes { show, list, set }) => {
             themes(show.as_deref(), list, set.as_deref(), &config, graphics()?)
         }
@@ -103,16 +119,69 @@ fn render_note(
 ) -> Result<()> {
     let text =
         std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
+    let (width, color, mut drawings) = output_setup(width, no_color, graphics);
+    let doc = syntax::parse(&text);
+    let lines = render::render_document_with(&doc, width, theme, &mut drawings);
+    let mut out = std::io::stdout().lock();
+    out.write_all(drawings.take_pending().as_bytes())?;
+    out.write_all(render::ansi::to_ansi(&lines, color).as_bytes())?;
+    out.flush()?;
+    Ok(())
+}
+
+/// `notopod graph [DIR]`: the notes under a folder and the links between
+/// them, as one picture.
+fn graph(
+    dir: Option<&std::path::Path>,
+    width: Option<u16>,
+    no_color: bool,
+    theme: &theme::Theme,
+    graphics: graphics::Mode,
+) -> Result<()> {
+    use render::Drawings;
+
+    let dir = dir.map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf);
+    let root =
+        std::fs::canonicalize(&dir).with_context(|| format!("cannot read {}", dir.display()))?;
+    let graph = notes::scan(&root);
+    let (width, color, mut drawings) = output_setup(width, no_color, graphics);
+    let drawing = graph.drawing(width);
+    let lines = drawings.draw(&drawing, theme, width, None);
+    let mut out = std::io::stdout().lock();
+    writeln!(
+        out,
+        "{} notes, {} links under {}{}",
+        graph.nodes.len(),
+        graph.edges.len(),
+        root.display(),
+        if graph.truncated {
+            format!(" (first {} only)", notes::MAX_NOTES)
+        } else {
+            String::new()
+        }
+    )?;
+    out.write_all(drawings.take_pending().as_bytes())?;
+    out.write_all(render::ansi::to_ansi(&lines, color).as_bytes())?;
+    out.flush()?;
+    Ok(())
+}
+
+/// What printing to stdout needs to know: how wide, whether to colour,
+/// and how to show drawings. Pictures ride on colour codes, so no colour
+/// means no pictures; the terminal is asked in raw mode so its answer
+/// does not echo.
+fn output_setup(
+    width: Option<u16>,
+    no_color: bool,
+    graphics: graphics::Mode,
+) -> (usize, bool, graphics::Graphics) {
     let stdout = std::io::stdout();
     let width = width
         .or_else(|| crossterm::terminal::size().ok().map(|(w, _)| w))
         .unwrap_or(80)
         .max(20);
     let color = !no_color && stdout.is_terminal() && std::env::var_os("NO_COLOR").is_none();
-
-    // Pictures ride on colour codes, so no colour means no pictures. The
-    // terminal is asked in raw mode so its answer does not echo.
-    let mut drawings = if color {
+    let drawings = if color {
         let raw = crossterm::terminal::enable_raw_mode().is_ok();
         let g = graphics::Graphics::detect(graphics);
         if raw {
@@ -122,14 +191,7 @@ fn render_note(
     } else {
         graphics::Graphics::braille()
     };
-
-    let doc = syntax::parse(&text);
-    let lines = render::render_document_with(&doc, usize::from(width), theme, &mut drawings);
-    let mut out = stdout.lock();
-    out.write_all(drawings.take_pending().as_bytes())?;
-    out.write_all(render::ansi::to_ansi(&lines, color).as_bytes())?;
-    out.flush()?;
-    Ok(())
+    (usize::from(width), color, drawings)
 }
 
 /// `notopod themes`: pick one, print the list, print one theme's source,
