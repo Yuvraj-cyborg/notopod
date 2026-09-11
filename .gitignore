@@ -1,5 +1,5 @@
 /target
-*.notopad-tmp
+*.notopod-tmp
 /result
 /result-*
 .direnv/
