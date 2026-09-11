@@ -13,11 +13,19 @@
 //! let lines = render_document(&doc, 40, &Theme::default());
 //! assert_eq!(lines[0].to_string(), "# Hi");
 //! ```
+//!
+//! ```` ```draw ```` blocks are handed to a [`Drawings`] implementation:
+//! the `*_with` functions take one, the plain ones use [`Braille`].
 
 pub mod ansi;
 mod block;
+mod drawings;
 mod inline;
 pub mod wrap;
 
-pub use block::{render_block, render_document, render_list_item};
+pub use block::{
+    render_block, render_block_with, render_document, render_document_with, render_list_item,
+    render_list_item_with,
+};
+pub use drawings::{Braille, Drawings};
 pub use inline::render_inlines;

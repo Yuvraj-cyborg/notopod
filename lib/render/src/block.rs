@@ -6,20 +6,44 @@ use syntax::{Alignment, Block, BlockKind, Document, Inline, ListItem};
 use theme::Theme;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+use crate::drawings::{Braille, Drawings};
 use crate::inline::render_inlines;
 use crate::wrap::wrap_spans;
 
 /// Bullet characters by nesting depth.
 const BULLETS: [&str; 3] = ["•", "◦", "▪"];
 
-/// Renders a whole document with a blank line between blocks.
+/// Renders a whole document with a blank line between blocks. Drawings
+/// come out as braille.
 pub fn render_document(doc: &Document, width: usize, theme: &Theme) -> Vec<Line<'static>> {
-    render_blocks(&doc.blocks, width, theme, 0, true)
+    render_document_with(doc, width, theme, &mut Braille)
 }
 
-/// Renders one block to lines no wider than `width`.
+/// Renders a whole document, drawing ```` ```draw ```` blocks with
+/// `drawings`.
+pub fn render_document_with(
+    doc: &Document,
+    width: usize,
+    theme: &Theme,
+    drawings: &mut dyn Drawings,
+) -> Vec<Line<'static>> {
+    render_blocks(&doc.blocks, width, theme, 0, true, drawings)
+}
+
+/// Renders one block to lines no wider than `width`. Drawings come out as
+/// braille.
 pub fn render_block(block: &Block, width: usize, theme: &Theme) -> Vec<Line<'static>> {
-    render_block_at(block, width, theme, 0)
+    render_block_with(block, width, theme, &mut Braille)
+}
+
+/// Renders one block, drawing ```` ```draw ```` blocks with `drawings`.
+pub fn render_block_with(
+    block: &Block,
+    width: usize,
+    theme: &Theme,
+    drawings: &mut dyn Drawings,
+) -> Vec<Line<'static>> {
+    render_block_at(block, width, theme, 0, drawings)
 }
 
 /// Renders a single list item on its own, as it would appear in its list.
@@ -33,7 +57,19 @@ pub fn render_list_item(
     width: usize,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
-    list_item(start, index, item, width, theme, 0)
+    render_list_item_with(start, index, item, width, theme, &mut Braille)
+}
+
+/// [`render_list_item`] with a choice of [`Drawings`].
+pub fn render_list_item_with(
+    start: Option<u64>,
+    index: usize,
+    item: &ListItem,
+    width: usize,
+    theme: &Theme,
+    drawings: &mut dyn Drawings,
+) -> Vec<Line<'static>> {
+    list_item(start, index, item, width, theme, 0, drawings)
 }
 
 fn render_blocks(
@@ -42,6 +78,7 @@ fn render_blocks(
     theme: &Theme,
     depth: usize,
     spaced: bool,
+    drawings: &mut dyn Drawings,
 ) -> Vec<Line<'static>> {
     let mut out = Vec::new();
     for (i, block) in blocks.iter().enumerate() {
@@ -52,12 +89,18 @@ fn render_blocks(
         if i > 0 && separate {
             out.push(Line::default());
         }
-        out.extend(render_block_at(block, width, theme, depth));
+        out.extend(render_block_at(block, width, theme, depth, drawings));
     }
     out
 }
 
-fn render_block_at(block: &Block, width: usize, theme: &Theme, depth: usize) -> Vec<Line<'static>> {
+fn render_block_at(
+    block: &Block,
+    width: usize,
+    theme: &Theme,
+    depth: usize,
+    drawings: &mut dyn Drawings,
+) -> Vec<Line<'static>> {
     let width = width.max(1);
     match &block.kind {
         BlockKind::Paragraph(inlines) => paragraph(inlines, theme.text, width, theme),
@@ -72,11 +115,18 @@ fn render_block_at(block: &Block, width: usize, theme: &Theme, depth: usize) -> 
             wrap_spans(spans, width)
         }
         BlockKind::CodeBlock { lang, code } if lang.as_deref() == Some(canvas::LANG) => {
-            canvas::render_source(code, theme, width)
+            drawings.draw_source(code, theme, width)
         }
         BlockKind::CodeBlock { lang, code } => code_block(lang.as_deref(), code, width, theme),
         BlockKind::BlockQuote(blocks) => {
-            let inner = render_blocks(blocks, width.saturating_sub(2).max(1), theme, depth, true);
+            let inner = render_blocks(
+                blocks,
+                width.saturating_sub(2).max(1),
+                theme,
+                depth,
+                true,
+                drawings,
+            );
             inner
                 .into_iter()
                 .map(|line| {
@@ -90,7 +140,7 @@ fn render_block_at(block: &Block, width: usize, theme: &Theme, depth: usize) -> 
         BlockKind::List { start, items } => items
             .iter()
             .enumerate()
-            .flat_map(|(i, item)| list_item(*start, i, item, width, theme, depth))
+            .flat_map(|(i, item)| list_item(*start, i, item, width, theme, depth, drawings))
             .collect(),
         BlockKind::Table {
             alignments,
@@ -129,6 +179,7 @@ fn list_item(
     width: usize,
     theme: &Theme,
     depth: usize,
+    drawings: &mut dyn Drawings,
 ) -> Vec<Line<'static>> {
     let (marker, marker_style) = match (item.checked, start) {
         (Some(true), _) => ("☑ ".to_owned(), theme.task_done),
@@ -138,7 +189,7 @@ fn list_item(
     };
     let indent = marker.width();
     let inner_width = width.saturating_sub(indent).max(1);
-    let mut inner = render_blocks(&item.blocks, inner_width, theme, depth + 1, false);
+    let mut inner = render_blocks(&item.blocks, inner_width, theme, depth + 1, false, drawings);
     if item.checked == Some(true) {
         inner = inner
             .into_iter()
