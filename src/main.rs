@@ -2,7 +2,7 @@
 
 mod config;
 
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -19,6 +19,13 @@ struct Cli {
     /// Overrides the config file. `notopod themes` lists what is available.
     #[arg(long, short = 't', global = true, value_name = "NAME")]
     theme: Option<String>,
+
+    /// How to show drawings: `auto` asks the terminal and uses pictures
+    /// (kitty graphics protocol: kitty, Ghostty, WezTerm, Konsole) when it
+    /// can, `kitty` forces pictures, `braille` draws dot art everywhere.
+    /// Overrides the config file.
+    #[arg(long, short = 'g', global = true, value_name = "MODE")]
+    graphics: Option<graphics::Mode>,
 
     #[command(subcommand)]
     command: Option<Command>,
@@ -55,15 +62,16 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = config::load()?;
     let theme = || config::resolve_theme(cli.theme.as_deref(), &config);
+    let graphics = || config::resolve_graphics(cli.graphics, &config);
 
     match cli.command {
-        None => tui::run(cli.file.as_deref(), theme()?),
-        Some(Command::Edit { file }) => tui::run(file.as_deref(), theme()?),
+        None => tui::run(cli.file.as_deref(), theme()?, graphics()?),
+        Some(Command::Edit { file }) => tui::run(file.as_deref(), theme()?, graphics()?),
         Some(Command::Render {
             file,
             width,
             no_color,
-        }) => render_note(&file, width, no_color, &theme()?),
+        }) => render_note(&file, width, no_color, &theme()?, graphics()?),
         Some(Command::Themes { show }) => themes(show.as_deref()),
         Some(Command::Config) => {
             println!("{}", config::describe_paths());
@@ -77,6 +85,7 @@ fn render_note(
     width: Option<u16>,
     no_color: bool,
     theme: &theme::Theme,
+    graphics: graphics::Mode,
 ) -> Result<()> {
     let text =
         std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
@@ -87,9 +96,25 @@ fn render_note(
         .max(20);
     let color = !no_color && stdout.is_terminal() && std::env::var_os("NO_COLOR").is_none();
 
+    // Pictures ride on colour codes, so no colour means no pictures. The
+    // terminal is asked in raw mode so its answer does not echo.
+    let mut drawings = if color {
+        let raw = crossterm::terminal::enable_raw_mode().is_ok();
+        let g = graphics::Graphics::detect(graphics);
+        if raw {
+            let _ = crossterm::terminal::disable_raw_mode();
+        }
+        g
+    } else {
+        graphics::Graphics::braille()
+    };
+
     let doc = syntax::parse(&text);
-    let lines = render::render_document(&doc, usize::from(width), theme);
-    print!("{}", render::ansi::to_ansi(&lines, color));
+    let lines = render::render_document_with(&doc, usize::from(width), theme, &mut drawings);
+    let mut out = stdout.lock();
+    out.write_all(drawings.take_pending().as_bytes())?;
+    out.write_all(render::ansi::to_ansi(&lines, color).as_bytes())?;
+    out.flush()?;
     Ok(())
 }
 

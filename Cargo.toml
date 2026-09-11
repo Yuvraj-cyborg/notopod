@@ -21,6 +21,7 @@ path = "src/main.rs"
 
 [dependencies]
 syntax.workspace = true
+graphics.workspace = true
 render.workspace = true
 theme.workspace = true
 tui.workspace = true

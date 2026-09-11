@@ -11,6 +11,9 @@
 //!
 //! [canvas]
 //! roughness = 0.7         # 0.0 exact geometry, 1.0 very sketchy; overrides the theme
+//!
+//! [graphics]
+//! mode = "auto"           # auto | kitty | braille: how drawings are shown
 //! ```
 //!
 //! User themes live in a `themes/` directory next to the config file, one
@@ -33,6 +36,17 @@ pub struct Config {
     /// Drawing options.
     #[serde(default)]
     pub canvas: Canvas,
+    /// How drawings reach the screen.
+    #[serde(default)]
+    pub graphics: GraphicsSection,
+}
+
+/// The `[graphics]` section.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GraphicsSection {
+    /// `auto`, `kitty` or `braille`.
+    pub mode: Option<String>,
 }
 
 /// The `[canvas]` section.
@@ -96,6 +110,20 @@ pub fn resolve_theme(flag: Option<&str>, config: &Config) -> Result<Theme> {
         theme.roughness = r;
     }
     Ok(theme)
+}
+
+/// Resolves how drawings are shown: `flag` (from `--graphics`) wins over
+/// the config file, which wins over `auto`.
+pub fn resolve_graphics(flag: Option<graphics::Mode>, config: &Config) -> Result<graphics::Mode> {
+    if let Some(mode) = flag {
+        return Ok(mode);
+    }
+    match config.graphics.mode.as_deref() {
+        Some(name) => name
+            .parse()
+            .map_err(|e: String| anyhow!("config: graphics.mode: {e}")),
+        None => Ok(graphics::Mode::Auto),
+    }
 }
 
 fn lookup_theme(name: &str) -> Result<Theme> {

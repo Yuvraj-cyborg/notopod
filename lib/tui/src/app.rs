@@ -5,9 +5,11 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use canvas::BoxKind;
 use editor::{Editor, Position};
+use graphics::Graphics;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::text::Line;
 use ratatui::DefaultTerminal;
+use render::Drawings;
 use syntax::{Document, LineIndex};
 use theme::Theme;
 
@@ -44,6 +46,7 @@ pub(crate) enum Mode {
 pub struct App {
     pub(crate) editor: Editor,
     pub(crate) theme: Theme,
+    pub(crate) graphics: Graphics,
     pub(crate) preview: bool,
     pub(crate) mode: Mode,
     pub(crate) scroll: usize,
@@ -71,11 +74,13 @@ struct CachedView {
 }
 
 impl App {
-    /// Creates the screen around `editor`, drawn with `theme`.
+    /// Creates the screen around `editor`, drawn with `theme`. Drawings
+    /// come out as braille until [`App::with_graphics`] says otherwise.
     pub fn new(editor: Editor, theme: Theme) -> Self {
         Self {
             editor,
             theme,
+            graphics: Graphics::braille(),
             preview: true,
             mode: Mode::Edit,
             scroll: 0,
@@ -94,6 +99,20 @@ impl App {
         }
     }
 
+    /// Draws ```` ```draw ```` blocks with `graphics` (pictures, where the
+    /// terminal can show them).
+    #[must_use]
+    pub fn with_graphics(mut self, graphics: Graphics) -> Self {
+        self.graphics = graphics;
+        self
+    }
+
+    /// Escape sequences that delete this session's pictures from the
+    /// terminal. Write them before restoring the terminal.
+    pub fn release_graphics(&mut self) -> String {
+        self.graphics.release_all()
+    }
+
     /// Runs the event loop until the user quits.
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         loop {
@@ -102,10 +121,11 @@ impl App {
                 return Ok(());
             }
             if event::poll(Duration::from_millis(250))? {
-                match event::read()? {
-                    Event::Key(key) => self.handle_key(key),
-                    Event::Paste(text) => self.handle_paste(&text),
-                    _ => {}
+                self.handle_event(event::read()?);
+                // Catch up with whatever else is already waiting, so a held
+                // key does not cost a frame per repeat.
+                while !self.quit && event::poll(Duration::ZERO)? {
+                    self.handle_event(event::read()?);
                 }
             }
             if self
@@ -159,6 +179,7 @@ impl App {
                 self.preview,
                 &self.theme,
                 override_block.as_ref(),
+                &mut self.graphics,
             );
             self.view = Some(CachedView { key, view });
         }
@@ -167,7 +188,7 @@ impl App {
 
     /// In canvas mode: the block's closing fence line and its rendered
     /// rows, with cursor, selection and preview drawn on.
-    fn canvas_lines(&self, width: usize) -> Option<(usize, Vec<Line<'static>>)> {
+    fn canvas_lines(&mut self, width: usize) -> Option<(usize, Vec<Line<'static>>)> {
         let Mode::Canvas(c) = &self.mode else {
             return None;
         };
@@ -179,7 +200,9 @@ impl App {
             preview: preview.as_ref(),
             min_size: canvas_mode::MIN_SIZE,
         };
-        let lines = canvas::render(&c.drawing, &self.theme, width, Some(&overlay));
+        let lines = self
+            .graphics
+            .draw(&c.drawing, &self.theme, width, Some(&overlay));
         Some((end, lines))
     }
 
@@ -188,6 +211,14 @@ impl App {
     }
 
     // ----- input -----
+
+    fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::Key(key) => self.handle_key(key),
+            Event::Paste(text) => self.handle_paste(&text),
+            _ => {}
+        }
+    }
 
     /// Handles one key press.
     pub fn handle_key(&mut self, key: KeyEvent) {

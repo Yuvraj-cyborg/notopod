@@ -7,7 +7,7 @@
 
 use editor::Editor;
 use ratatui::text::Line;
-use render::{render_block, render_list_item};
+use render::{render_block_with, render_list_item_with, Drawings};
 use syntax::{BlockKind, Document, LineIndex};
 use theme::Theme;
 use unicode_width::UnicodeWidthChar;
@@ -82,6 +82,7 @@ enum Target {
 }
 
 /// Lays out the buffer at `width` columns.
+#[allow(clippy::too_many_arguments)]
 pub fn build(
     editor: &Editor,
     doc: &Document,
@@ -90,6 +91,7 @@ pub fn build(
     preview: bool,
     theme: &Theme,
     override_block: Option<&Override<'_>>,
+    drawings: &mut dyn Drawings,
 ) -> View {
     let width = width.max(1);
     let segments = if preview {
@@ -136,7 +138,7 @@ pub fn build(
                     first: seg.first,
                     last,
                 };
-                let rendered = render_target(doc, seg.target, width, theme);
+                let rendered = render_target(doc, seg.target, width, theme, drawings);
                 if rendered.is_empty() {
                     rows.push(Row {
                         line: Line::default(),
@@ -230,12 +232,13 @@ fn render_target(
     target: Target,
     width: usize,
     theme: &Theme,
+    drawings: &mut dyn Drawings,
 ) -> Vec<Line<'static>> {
     match target {
-        Target::Block(bi) => render_block(&doc.blocks[bi], width, theme),
+        Target::Block(bi) => render_block_with(&doc.blocks[bi], width, theme, drawings),
         Target::Item { block, item } => match &doc.blocks[block].kind {
             BlockKind::List { start, items } => {
-                render_list_item(*start, item, &items[item], width, theme)
+                render_list_item_with(*start, item, &items[item], width, theme, drawings)
             }
             _ => Vec::new(),
         },
@@ -352,6 +355,7 @@ mod tests {
             preview,
             &Theme::default(),
             None,
+            &mut render::Braille,
         )
     }
 
@@ -370,7 +374,16 @@ mod tests {
             lines: &lines,
             cursor: (5, 1),
         };
-        let v = build(&editor, &doc, &index, 40, true, &Theme::default(), Some(&o));
+        let v = build(
+            &editor,
+            &doc,
+            &index,
+            40,
+            true,
+            &Theme::default(),
+            Some(&o),
+            &mut render::Braille,
+        );
         assert_eq!(
             texts(&v),
             vec!["# T", "", "row0", "row1", "row2", "after", ""]

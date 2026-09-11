@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 canvas.workspace = true
+graphics.workspace = true
 syntax.workspace = true
 editor.workspace = true
 render.workspace = true

@@ -1,5 +1,7 @@
 //! Drawing.
 
+use std::io::Write;
+
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::text::{Line, Text};
 use ratatui::widgets::Paragraph;
@@ -22,6 +24,15 @@ impl App {
             let view = self.ensure_view(width);
             (view.cursor.0, view.cursor.1, view.rows.len())
         };
+        // Pictures must reach the terminal before the cells that show them.
+        // ratatui writes the frame after this closure returns, so anything
+        // written now comes first.
+        let pending = self.graphics.take_pending();
+        if !pending.is_empty() {
+            let mut out = std::io::stdout();
+            let _ = out.write_all(pending.as_bytes());
+            let _ = out.flush();
+        }
 
         if height > 0 {
             if cursor_row < self.scroll {
