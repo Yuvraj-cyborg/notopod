@@ -7,6 +7,29 @@ workspace share one version number.
 
 ## [Unreleased]
 
+### Added
+
+- Drawings. A fenced block tagged `draw` holds shapes, one per line
+  (`rect`, `ellipse`, `diamond`, `line`/`arrow` with `-> <- <-> --`
+  connectors and corners, `text`, `size`; `fill`, `dashed`, `round`,
+  `color=`; quoted labels). It renders as hand-drawn braille graphics:
+  shapes sit on cells but are drawn at 2×4 dots per cell, with jittered,
+  bowed strokes whose roughness the theme controls. Lines that end inside
+  a box connect to its border. Unparsed lines are kept as they are.
+- Canvas mode (`Ctrl+D`): draw in a block with the keyboard. `r`/`e`/`d`
+  place boxes, `l`/`a` lines and arrows (Space adds corners), `t` labels,
+  `m` moves, `x` deletes, `f`/`-`/`o`/`c` change fill, dashes, corners and
+  colour. Every action is one undo step and rewrites the block's text.
+- Themes. Nine built in (`default`, `mono`, `catppuccin-mocha`,
+  `gruvbox-dark`, `nord`, `tokyo-night`, `dracula`, `solarized-dark`,
+  `solarized-light`), `--theme`/`-t`, and user themes as TOML files: a
+  nine colour palette plus optional per-element `[styles]` overrides.
+  `notopod themes` lists them, `notopod themes NAME` prints one.
+- A config file, `~/.config/notopod/config.toml` (`$NOTOPOD_CONFIG`,
+  `$XDG_CONFIG_HOME` honoured): `theme` and `[canvas] roughness`.
+  `notopod config` shows the paths.
+- `^D draw` in the status bar.
+
 ### Changed
 
 - The project is called notopod. Everything that said `notopad` (a typo

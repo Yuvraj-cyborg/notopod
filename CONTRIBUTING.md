@@ -82,12 +82,14 @@ dependencies. Users get releases, Nix, or `cargo install --git`.
 
 | Path | Contents |
 |---|---|
-| `src/` | The `notopod` command-line entry point (root package) |
+| `src/` | The `notopod` command-line entry point and config file (root package) |
 | `lib/syntax` | Document model, Markdown parser, line index |
-| `lib/render` | Theme, block and inline rendering, wrapping, ANSI output |
+| `lib/canvas` | ` ```draw ` language: model, parser/serialiser, braille raster, rough strokes, renderer |
+| `lib/render` | Block and inline rendering, wrapping, ANSI output |
+| `lib/theme` | `Theme`, `Palette`, style strings, built-in theme TOML files |
 | `lib/editor` | Rope buffer, cursor, undo history, list-aware Enter, search, save |
-| `lib/tui` | App state, key handling, screen layout, drawing |
-| `docs/` | Architecture notes and the release procedure |
+| `lib/tui` | App state, key handling, screen layout, drawing, canvas mode |
+| `docs/` | Architecture notes |
 
 New library crates go in `lib/<name>` with a short name and
 `publish = false`, and get one line in the tables here and in the README.
@@ -97,7 +99,14 @@ kind of block.
 
 ## Testing the screen
 
-Layout logic (`lib/tui/src/view.rs`) has unit tests. For behaviour,
-run the editor and try the awkward cases: a list with an empty item,
-Enter inside a word, Ctrl+Z after pasting, a very long line, resizing the
-terminal, a file that does not exist yet.
+Layout logic (`lib/tui/src/view.rs`) and the canvas-mode key flows
+(`lib/tui/src/app.rs`, driving `App::handle_key` with synthetic events)
+have unit tests. For behaviour, run the editor and try the awkward
+cases: a list with an empty item, Enter inside a word, Ctrl+Z after
+pasting, a very long line, resizing the terminal, a file that does not
+exist yet, a drawing in the top-left corner, Esc in the middle of placing
+a line.
+
+`tmux` is handy for looking at the real thing without a hand on the
+keyboard: start `notopod` in a detached session, `tmux send-keys`, then
+`tmux capture-pane -p`.
