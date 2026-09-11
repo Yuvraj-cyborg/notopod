@@ -34,6 +34,19 @@ jobs:
           changelog: CHANGELOG.md
           branch: main
           token: ${{ secrets.GITHUB_TOKEN }}
+      # The installer is attached to the release as well as living on
+      # `main`, so there is a URL that can never change under someone:
+      # .../releases/download/<tag>/install.sh. The release notes are the
+      # changelog section plus a fixed "how to install" footer.
+      - name: Attach the installer and say how to use it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release upload "$TAG" install.sh --clobber
+          gh release view "$TAG" --json body -q .body > notes.md
+          cat .github/release-install.md >> notes.md
+          gh release edit "$TAG" --notes-file notes.md
 
   upload-binaries:
     name: build ${{ matrix.target }}
