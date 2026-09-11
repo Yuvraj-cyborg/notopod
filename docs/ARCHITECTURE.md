@@ -11,14 +11,14 @@
                                                             │ which block is shown raw
 ```
 
-1. `notopad-editor` owns the text as a rope and applies edits.
-2. `notopad-core` parses the whole text into a `Document`: a list of
+1. `editor` owns the text as a rope and applies edits.
+2. `syntax` parses the whole text into a `Document`: a list of
    top-level `Block`s, each carrying the byte range it came from.
-3. `notopad-tui::view` walks the buffer line by line. A block that does
-   not contain the cursor is handed to `notopad-render` and becomes
+3. `tui::view` walks the buffer line by line. A block that does
+   not contain the cursor is handed to `render` and becomes
    formatted rows; a block that does contain the cursor is emitted as raw
    source rows. Blank lines between blocks are raw too.
-4. `notopad-tui::ui` paints the rows and the status bar with ratatui.
+4. `tui::ui` paints the rows and the status bar with ratatui.
 
 Parsing happens on every change. That is deliberate: a note is small, the
 parser takes well under a millisecond for typical sizes, and it keeps the
@@ -28,22 +28,30 @@ without typing re-lays out but does not re-parse.
 
 ## Crates
 
-| Crate | Depends on | Job |
-|---|---|---|
-| `notopad-core` | pulldown-cmark | `Document`, `Block`, `Inline`; `parse()`; `LineIndex` (byte offset to line). No terminal code at all. |
-| `notopad-render` | core, ratatui (types only) | `Theme`; block and inline rendering to `ratatui::text::Line`; word wrap; ANSI serialisation for stdout. |
-| `notopad-editor` | ropey | `Editor`: cursor, movement, editing, undo/redo, search, atomic save. Knows nothing about Markdown except the list-continuation rules in `smart.rs`. |
-| `notopad-tui` | core, render, editor, ratatui + crossterm | `App` state machine (edit / find / save-as / confirm-quit), `view` (rows), `ui` (draw), key bindings. |
-| `notopad` | tui, render, core, clap | The command: `notopad [FILE]`, `notopad render FILE`. |
+The binary is the workspace root package (`src/main.rs`); the library
+crates live under `lib/` and have short, unprefixed names. They are
+`publish = false`: the product is the `notopod` binary, not the libraries.
 
-Dependencies point one way: `notopad -> tui -> {core, render, editor}`,
-`render -> core`. `core` and `editor` depend on nothing else in the
+| Crate | Path | Depends on | Job |
+|---|---|---|---|
+| `syntax` | `lib/syntax` | pulldown-cmark | `Document`, `Block`, `Inline`; `parse()`; `LineIndex` (byte offset to line). No terminal code at all. |
+| `render` | `lib/render` | syntax, ratatui (types only) | `Theme`; block and inline rendering to `ratatui::text::Line`; word wrap; ANSI serialisation for stdout. |
+| `editor` | `lib/editor` | ropey | `Editor`: cursor, movement, editing, undo/redo, search, atomic save. Knows nothing about Markdown except the list-continuation rules in `smart.rs`. |
+| `tui` | `lib/tui` | syntax, render, editor, ratatui + crossterm | `App` state machine (edit / find / save-as / confirm-quit), `view` (rows), `ui` (draw), key bindings. |
+| `notopod` | `src/` | tui, render, syntax, clap | The command: `notopod [FILE]`, `notopod render FILE`. |
+
+Dependencies point one way: `notopod -> tui -> {syntax, render, editor}`,
+`render -> syntax`. `syntax` and `editor` depend on nothing else in the
 workspace, so they are the easiest to reuse.
+
+The parser crate is called `syntax`, not `core`, on purpose: a crate named
+`core` shadows Rust's built-in `core` in every crate that depends on it,
+which breaks `core::` paths and the derive macros that expand to them.
 
 ## Decisions worth knowing
 
 **Markdown, not a new format.** Notes are CommonMark plus tables, task
-lists, strikethrough and front matter. Anything notopad adds later lives
+lists, strikethrough and front matter. Anything notopod adds later lives
 inside fenced code blocks, so a note still opens everywhere else.
 
 **Blocks carry spans.** Every `Block` and `ListItem` has a byte range
@@ -73,10 +81,10 @@ is configured so only `\n` ends a line, matching `LineIndex`.
 
 ## Adding a block type
 
-1. `notopad-core/src/ast.rs`: add a `BlockKind` variant.
-2. `notopad-core/src/parse.rs`: add a match arm in `Builder::blocks` that
+1. `lib/syntax/src/ast.rs`: add a `BlockKind` variant.
+2. `lib/syntax/src/parse.rs`: add a match arm in `Builder::blocks` that
    builds it and keeps the `range` as its span. Add a test.
-3. `notopad-render/src/block.rs`: add a match arm in `render_block_at`.
+3. `lib/render/src/block.rs`: add a match arm in `render_block_at`.
    Add a test that renders through `render_document`.
 
 `view.rs` treats all blocks the same; nothing to change there unless the
@@ -84,9 +92,9 @@ block needs per-part preview like lists do.
 
 ## Where diagrams will go
 
-A `notopad-diagram` crate: takes the text of a fenced block with a
+A `lib/diagram` crate: takes the text of a fenced block with a
 recognised language tag, parses the diagram language, lays it out, and
 returns `Vec<Line>`. `render`'s code block arm dispatches on the language
-tag. `core`, `editor` and `tui` need no changes. Until the language
+tag. `syntax`, `editor` and `tui` need no changes. Until the language
 exists, box-drawing characters inside any code block already render
 as-is, so hand-drawn diagrams work today.

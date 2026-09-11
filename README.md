@@ -1,8 +1,8 @@
-# notopad
+# notopod
 
 Notes in your terminal, formatted while you type.
 
-notopad is a text editor for Markdown notes that runs in the terminal.
+notopod is a text editor for Markdown notes that runs in the terminal.
 While you write, headings, lists, tables and code blocks are shown
 formatted. The one block your cursor is on shows its raw Markdown so you
 can edit it. Move away and it snaps back into shape.
@@ -35,33 +35,41 @@ You need Rust 1.88 or newer for the first option.
 **From source**
 
 ```
-git clone https://github.com/notopad/notopad
-cd notopad
-cargo install --path crates/notopad
+git clone https://github.com/Yuvraj-cyborg/notopod
+cd notopod
+cargo install --path .
+```
+
+This puts a `notopod` binary in `~/.cargo/bin`, which `rustup` already adds
+to your `PATH`. Run the same command again after pulling changes to update
+it; `cargo uninstall notopod` removes it. Without cloning:
+
+```
+cargo install --git https://github.com/Yuvraj-cyborg/notopod
 ```
 
 **With Nix**
 
 ```
-nix run github:notopad/notopad              # try it without installing
-nix profile install github:notopad/notopad  # install
+nix run github:Yuvraj-cyborg/notopod              # try it without installing
+nix profile install github:Yuvraj-cyborg/notopod  # install
 nix develop                                 # inside a clone: a shell with the Rust toolchain
 ```
 
 **Prebuilt binaries**
 
 Every release on the Releases page ships archives for Linux, macOS and
-Windows. Unpack and put `notopad` somewhere on your `PATH`.
+Windows. Unpack and put `notopod` somewhere on your `PATH`.
 
 ## Use
 
 ```
-notopad notes.md            open a note (created on first save if it does not exist)
-notopad                     start with an empty note; you are asked for a name when you save
-notopad render notes.md     print a note formatted, then exit
+notopod notes.md            open a note (created on first save if it does not exist)
+notopod                     start with an empty note; you are asked for a name when you save
+notopod render notes.md     print a note formatted, then exit
 ```
 
-`render` is for scripts and pipes, for example `notopad render todo.md | less -R`.
+`render` is for scripts and pipes, for example `notopod render todo.md | less -R`.
 It drops colours on its own when the output is not a terminal or when
 `NO_COLOR` is set. `--width 60` wraps at a fixed width; `--no-color` forces plain text.
 
@@ -87,7 +95,7 @@ Pasting from the terminal works as usual.
 
 ## How the preview works
 
-notopad reads your note as a list of blocks: a heading, a paragraph, a
+notopod reads your note as a list of blocks: a heading, a paragraph, a
 list item, a table, a code block. Every block is drawn formatted except
 the one that contains your cursor, which is drawn exactly as you typed it.
 
@@ -134,17 +142,20 @@ This is version 0.1. It edits and previews notes well. It does not yet have:
 
 ## Project layout
 
-One Cargo workspace, five crates. Each can be published and used on its own.
+One Cargo workspace. The `notopod` binary is the root package; the parts
+it is built from are library crates under `lib/`.
 
-| Crate | What it does |
+| Path | What it does |
 |---|---|
-| `notopad-core` | Parses Markdown into blocks that remember where in the file they came from |
-| `notopad-render` | Turns blocks into styled, wrapped terminal text |
-| `notopad-editor` | The text buffer: cursor, editing, undo, saving |
-| `notopad-tui` | The screen: live preview, keys, status bar |
-| `notopad` | The `notopad` command |
+| `src/` | The `notopod` command: argument parsing and dispatch, nothing else |
+| `lib/syntax` | Parses a note into blocks that remember where in the file they came from |
+| `lib/render` | Turns blocks into styled, wrapped terminal text |
+| `lib/editor` | The text buffer: cursor, editing, undo, saving |
+| `lib/tui` | The screen: live preview, keys, status bar |
 
-There is more in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The library crates have short names (`syntax`, `render`, ...) and are not
+published to crates.io on their own; the product is the binary. There is
+more in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Contributing
 
