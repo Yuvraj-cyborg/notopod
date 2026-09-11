@@ -462,6 +462,22 @@ mod tests {
     }
 
     #[test]
+    fn rough_outline_on_the_top_left_corner_stays_closed() {
+        let theme = Theme::default(); // rough
+        for seed_shift in 0..4 {
+            let src = format!("rect 0,0 {}x2\n", 12 + seed_shift);
+            let lines = render_source(&src, &theme, 80);
+            let top: Vec<char> = lines[0].to_string().chars().collect();
+            let w = (12 + seed_shift) as usize;
+            assert!(
+                top[..w].iter().all(|c| *c != ' '),
+                "gap in top edge of {src:?}: {:?}",
+                lines[0].to_string()
+            );
+        }
+    }
+
+    #[test]
     fn arrow_binds_to_box_borders() {
         // Two boxes and an arrow from inside A to inside B: the stroke must
         // not cross the interiors, i.e. the cells between the boxes get dots

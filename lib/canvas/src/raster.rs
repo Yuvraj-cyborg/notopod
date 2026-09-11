@@ -53,11 +53,12 @@ impl Raster {
     }
 
     /// Turns on the dot at `(x, y)` (dot coordinates), colouring its cell.
-    /// Dots outside the canvas are ignored.
+    ///
+    /// A rough stroke along the top or left edge can wander above or left
+    /// of the canvas; those dots are pulled onto the edge so the outline
+    /// stays closed. Dots past the right or bottom edge are dropped.
     pub fn plot(&mut self, x: i32, y: i32, color: Option<Color>) {
-        if x < 0 || y < 0 {
-            return;
-        }
+        let (x, y) = (x.max(0), y.max(0));
         let Some(i) = self.index(x / DOTS_X, y / DOTS_Y) else {
             return;
         };
@@ -179,9 +180,11 @@ mod tests {
         assert_eq!(r.glyph(1, 0), '⣀' /* U+28C0: bits 0x40|0x80 */);
         assert!(r.get(0, 0));
         assert!(!r.get(1, 0));
-        // Out of range is ignored.
-        r.plot(-1, 0, None);
+        // Past the far edges is ignored; before the origin lands on the edge.
         r.plot(100, 100, None);
+        assert_eq!(r.glyph(1, 0), '⣀');
+        r.plot(-3, 1, None);
+        assert!(r.get(0, 1));
     }
 
     #[test]

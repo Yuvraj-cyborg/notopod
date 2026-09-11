@@ -349,6 +349,55 @@ impl Editor {
         self.remove_range(idx..idx + 1, idx);
     }
 
+    /// Replaces the lines `first..end` with `text`, as one undoable edit.
+    ///
+    /// `text` should end each line with `\n`; an empty `text` deletes the
+    /// lines. `first == end` inserts before line `first`. The cursor keeps
+    /// its position, clamped into the new text. Does nothing when the
+    /// lines already read `text`.
+    pub fn replace_lines(&mut self, first: usize, end: usize, text: &str) {
+        let len_lines = self.len_lines();
+        let first = first.min(len_lines);
+        let end = end.clamp(first, len_lines);
+        let start_char = if first >= len_lines {
+            self.rope.len_chars()
+        } else {
+            self.rope.line_to_char(first)
+        };
+        let end_char = if end >= len_lines {
+            self.rope.len_chars()
+        } else {
+            self.rope.line_to_char(end)
+        };
+        let mut text = normalize(text);
+        // Appending after a last line that has no line break: start on a
+        // new line rather than gluing onto it.
+        if first >= len_lines && !text.is_empty() {
+            let n = self.rope.len_chars();
+            if n > 0 && self.rope.char(n - 1) != '\n' {
+                text.insert(0, '\n');
+            }
+        }
+        let removed = self.rope.slice(start_char..end_char).to_string();
+        if removed == text {
+            return;
+        }
+        let before = self.cursor;
+        self.rope.remove(start_char..end_char);
+        self.rope.insert(start_char, &text);
+        let line = before.line.min(self.len_lines() - 1);
+        let after = Position::new(line, before.col.min(self.line_len(line)));
+        self.cursor = after;
+        self.touch();
+        self.history.push(Edit {
+            at: start_char,
+            inserted: text,
+            removed,
+            before,
+            after,
+        });
+    }
+
     /// Reverts the last change. Returns `false` if there was none.
     pub fn undo(&mut self) -> bool {
         let Some(edit) = self.history.pop_undo() else {
@@ -681,6 +730,35 @@ mod tests {
         e.dedent_line();
         assert_eq!(e.text(), "x");
         assert_eq!(e.cursor(), Position::new(0, 1));
+    }
+
+    #[test]
+    fn replace_lines_is_one_undo_step() {
+        let mut e = Editor::from_text("a\nb\nc\nd");
+        e.set_cursor(Position::new(3, 1));
+        e.replace_lines(1, 3, "X\nY\nZ\n");
+        assert_eq!(e.text(), "a\nX\nY\nZ\nd");
+        assert_eq!(e.cursor(), Position::new(3, 1));
+        e.replace_lines(1, 1, "inserted\n");
+        assert_eq!(e.text(), "a\ninserted\nX\nY\nZ\nd");
+        e.replace_lines(1, 5, "");
+        assert_eq!(e.text(), "a\nd");
+        assert_eq!(e.cursor(), Position::new(1, 1));
+        assert!(e.undo());
+        assert_eq!(e.text(), "a\ninserted\nX\nY\nZ\nd");
+        assert!(e.undo());
+        assert!(e.undo());
+        assert_eq!(e.text(), "a\nb\nc\nd");
+        assert!(!e.undo());
+        // A no-op replacement leaves history alone.
+        let v = e.version();
+        e.replace_lines(0, 1, "a\n");
+        assert_eq!(e.version(), v);
+        // Past the end appends on a new line.
+        e.replace_lines(4, 4, "e\n");
+        assert_eq!(e.text(), "a\nb\nc\nd\ne\n");
+        e.replace_lines(9, 9, "f\n");
+        assert_eq!(e.text(), "a\nb\nc\nd\ne\nf\n");
     }
 
     #[test]

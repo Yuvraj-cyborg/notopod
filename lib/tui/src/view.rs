@@ -54,6 +54,21 @@ pub struct View {
     pub cursor: (usize, usize),
 }
 
+/// Pre-rendered rows that replace one block, used while a drawing is being
+/// edited: the block is shown rendered even though the cursor is in it,
+/// and the cursor lands on a cell of the drawing instead of on source.
+#[derive(Debug)]
+pub struct Override<'a> {
+    /// First buffer line of the block (its opening fence).
+    pub first: usize,
+    /// Last buffer line of the block (its closing fence).
+    pub last: usize,
+    /// The rows to show.
+    pub lines: &'a [Line<'static>],
+    /// `(x, row)` of the cursor within `lines`.
+    pub cursor: (usize, usize),
+}
+
 struct Segment {
     first: usize,
     last: usize,
@@ -74,6 +89,7 @@ pub fn build(
     width: usize,
     preview: bool,
     theme: &Theme,
+    override_block: Option<&Override<'_>>,
 ) -> View {
     let width = width.max(1);
     let segments = if preview {
@@ -92,6 +108,25 @@ pub fn build(
     while line < line_count {
         while seg_idx < segments.len() && segments[seg_idx].first < line {
             seg_idx += 1;
+        }
+        if let Some(o) = override_block.filter(|o| o.first == line) {
+            let last = o.last.min(line_count - 1).max(o.first);
+            let source = Source::Rendered {
+                first: o.first,
+                last,
+            };
+            let first_row = rows.len();
+            if o.lines.is_empty() {
+                rows.push(Row {
+                    line: Line::default(),
+                    source,
+                });
+            }
+            rows.extend(o.lines.iter().cloned().map(|line| Row { line, source }));
+            let row = o.cursor.1.min(rows.len() - first_row - 1);
+            cursor_pos = (first_row + row, o.cursor.0);
+            line = last + 1;
+            continue;
         }
         if let Some(seg) = segments.get(seg_idx).filter(|s| s.first == line) {
             let last = seg.last.min(line_count - 1);
@@ -309,7 +344,42 @@ mod tests {
         let src = editor.text();
         let doc = syntax::parse(&src);
         let index = LineIndex::new(&src);
-        build(&editor, &doc, &index, width, preview, &Theme::default())
+        build(
+            &editor,
+            &doc,
+            &index,
+            width,
+            preview,
+            &Theme::default(),
+            None,
+        )
+    }
+
+    #[test]
+    fn override_replaces_a_block_and_places_the_cursor() {
+        let text = "# T\n\n```draw\nrect 0,0 2x1\n```\nafter\n";
+        let mut editor = Editor::from_text(text);
+        editor.set_cursor(Position::new(2, 0));
+        let src = editor.text();
+        let doc = syntax::parse(&src);
+        let index = LineIndex::new(&src);
+        let lines = vec![Line::from("row0"), Line::from("row1"), Line::from("row2")];
+        let o = Override {
+            first: 2,
+            last: 4,
+            lines: &lines,
+            cursor: (5, 1),
+        };
+        let v = build(&editor, &doc, &index, 40, true, &Theme::default(), Some(&o));
+        assert_eq!(
+            texts(&v),
+            vec!["# T", "", "row0", "row1", "row2", "after", ""]
+        );
+        assert_eq!(v.cursor, (3, 5));
+        assert!(matches!(
+            v.rows[3].source,
+            Source::Rendered { first: 2, last: 4 }
+        ));
     }
 
     fn texts(view: &View) -> Vec<String> {

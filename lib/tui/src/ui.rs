@@ -46,19 +46,21 @@ impl App {
 
         self.draw_status(frame, status);
 
-        match &self.mode {
-            Mode::Edit | Mode::ConfirmQuit => {
-                let y = cursor_row.saturating_sub(scroll);
-                if y < height && cursor_x < width {
-                    frame.set_cursor_position(Position::new(
-                        body.x + cursor_x as u16,
-                        body.y + y as u16,
-                    ));
-                }
-            }
-            Mode::Find { .. } | Mode::SaveAs { .. } => {
-                let x = self.status_left().width().min(usize::from(status.width));
-                frame.set_cursor_position(Position::new(status.x + x as u16, status.y));
+        let cursor_in_status = match &self.mode {
+            Mode::Find { .. } | Mode::SaveAs { .. } => true,
+            Mode::Canvas(c) => c.is_typing(),
+            Mode::Edit | Mode::ConfirmQuit => false,
+        };
+        if cursor_in_status {
+            let x = self.status_left().width().min(usize::from(status.width));
+            frame.set_cursor_position(Position::new(status.x + x as u16, status.y));
+        } else {
+            let y = cursor_row.saturating_sub(scroll);
+            if y < height && cursor_x < width {
+                frame.set_cursor_position(Position::new(
+                    body.x + cursor_x as u16,
+                    body.y + y as u16,
+                ));
             }
         }
     }
@@ -91,6 +93,14 @@ impl App {
                 " Unsaved changes. Press Ctrl+Q again to quit without saving, or Esc to go back."
                     .to_owned()
             }
+            Mode::Canvas(c) => {
+                if let Some((message, _)) = &self.notice {
+                    if !c.is_typing() {
+                        return format!(" {message}");
+                    }
+                }
+                format!(" draw  {},{}  {}", c.cursor.x, c.cursor.y, c.hint())
+            }
             Mode::Edit => {
                 if let Some((message, _)) = &self.notice {
                     return format!(" {message}");
@@ -112,8 +122,9 @@ impl App {
             Mode::Find { .. } => "Enter next   Esc done ".to_owned(),
             Mode::SaveAs { .. } => "Enter save   Esc cancel ".to_owned(),
             Mode::ConfirmQuit => String::new(),
+            Mode::Canvas(_) => "Esc done ".to_owned(),
             Mode::Edit => format!(
-                "^S save  ^Q quit  ^F find  ^Z undo  ^P preview {} ",
+                "^S save  ^Q quit  ^F find  ^D draw  ^Z undo  ^P preview {} ",
                 if self.preview { "on" } else { "off" }
             ),
         }

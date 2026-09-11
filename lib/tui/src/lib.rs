@@ -7,6 +7,7 @@
 //! Call [`run`] with an optional file path to start the editor.
 
 mod app;
+mod canvas_mode;
 mod ui;
 mod view;
 
