@@ -15,10 +15,20 @@ use syntax::{Document, LineIndex};
 use theme::Theme;
 
 use crate::canvas_mode::{self, CanvasState, Placing, Tool};
+use crate::files::FilePanel;
 use crate::view::{self, Override, Source, View};
 
 /// How long a status-bar message stays visible.
 const NOTICE_TTL: Duration = Duration::from_secs(4);
+
+/// Which part of the screen has the keyboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Focus {
+    /// The note.
+    Editor,
+    /// The file panel on the left.
+    Files,
+}
 
 /// What the keyboard is currently driving.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +110,9 @@ pub struct App {
     pub(crate) notice: Option<(String, Instant)>,
     pub(crate) body_height: usize,
     pub(crate) body_width: usize,
+    /// The file panel, while it is open.
+    pub(crate) files: Option<FilePanel>,
+    pub(crate) focus: Focus,
     last_query: String,
     quit: bool,
 }
@@ -140,6 +153,8 @@ impl App {
             notice: None,
             body_height: 0,
             body_width: 80,
+            files: None,
+            focus: Focus::Editor,
             last_query: String::new(),
             quit: false,
         }
@@ -412,6 +427,10 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
+        if self.focus == Focus::Files {
+            self.handle_files_key(key);
+            return;
+        }
         match self.mode {
             Mode::Edit => self.handle_edit_key(key),
             Mode::ConfirmQuit => self.handle_confirm_quit_key(key),
@@ -459,11 +478,115 @@ impl App {
             }
             KeyCode::Char('t') => self.new_tab(),
             KeyCode::Char('w') => self.request_close_tab(),
+            KeyCode::Char('b') => self.toggle_files(),
             KeyCode::PageDown | KeyCode::Tab if !shift => self.next_tab(),
             KeyCode::PageUp | KeyCode::BackTab | KeyCode::Tab => self.prev_tab(),
             _ => return false,
         }
         true
+    }
+
+    // ----- file panel -----
+
+    /// Ctrl+B: opens the panel and gives it the keyboard; from the panel,
+    /// closes it; from the note while the panel is open, goes to it.
+    pub(crate) fn toggle_files(&mut self) {
+        match (self.focus, &self.files) {
+            (Focus::Files, _) => {
+                self.files = None;
+                self.focus = Focus::Editor;
+            }
+            (Focus::Editor, Some(_)) => self.focus = Focus::Files,
+            (Focus::Editor, None) => {
+                let (root, note) = self.panel_root();
+                let mut panel = FilePanel::new(root);
+                if let Some(note) = note {
+                    panel.reveal(&note);
+                }
+                self.files = Some(panel);
+                self.focus = Focus::Files;
+            }
+        }
+    }
+
+    /// Where the panel starts: the working directory when the current
+    /// note is inside it, otherwise the note's own directory. Also the
+    /// note's path in the same terms, for putting the cursor on it.
+    fn panel_root(&self) -> (PathBuf, Option<PathBuf>) {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let cwd = std::fs::canonicalize(&cwd).unwrap_or(cwd);
+        let Some(path) = self.editor().path() else {
+            return (cwd, None);
+        };
+        let abs = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            cwd.join(path)
+        };
+        let dir = abs.parent().map_or_else(|| cwd.clone(), Path::to_path_buf);
+        let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+        let note = abs.file_name().map(|n| dir.join(n));
+        if dir.starts_with(&cwd) {
+            (cwd, note)
+        } else {
+            (dir, note)
+        }
+    }
+
+    fn handle_files_key(&mut self, key: KeyEvent) {
+        if self.handle_global_key(key) {
+            return;
+        }
+        let page = self.body_height.saturating_sub(2).max(1) as isize;
+        let Some(panel) = &mut self.files else {
+            self.focus = Focus::Editor;
+            return;
+        };
+        let mut open_note = false;
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => panel.move_by(-1),
+            KeyCode::Down | KeyCode::Char('j') => panel.move_by(1),
+            KeyCode::PageUp => panel.move_by(-page),
+            KeyCode::PageDown => panel.move_by(page),
+            KeyCode::Home => panel.move_to(0),
+            KeyCode::End | KeyCode::Char('G') => panel.move_to(usize::MAX),
+            KeyCode::Left | KeyCode::Char('h') => panel.collapse(),
+            KeyCode::Right | KeyCode::Char('l') => open_note = !panel.expand(),
+            KeyCode::Enter => open_note = !panel.toggle(),
+            KeyCode::Char('r') => {
+                panel.refresh();
+                self.notice = Some(("Files re-read".to_owned(), Instant::now()));
+            }
+            KeyCode::Esc | KeyCode::Tab => self.focus = Focus::Editor,
+            _ => {}
+        }
+        if open_note {
+            self.open_selected_file();
+        }
+    }
+
+    /// Enter on a note in the panel: shows it and hands the keyboard back.
+    fn open_selected_file(&mut self) {
+        let Some(path) = self
+            .files
+            .as_ref()
+            .and_then(FilePanel::selected)
+            .map(|row| row.path.clone())
+        else {
+            return;
+        };
+        if self.open_path(&path) {
+            self.focus = Focus::Editor;
+        }
+    }
+
+    /// Paths of the notes open in tabs, for marking them in the panel.
+    pub(crate) fn open_paths(&self) -> Vec<PathBuf> {
+        self.tabs
+            .iter()
+            .filter_map(|t| t.editor.path())
+            .map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()))
+            .collect()
     }
 
     fn handle_edit_key(&mut self, key: KeyEvent) {
@@ -1204,6 +1327,39 @@ pub(crate) mod tests {
             Some(dir.path().join("three.md").as_path())
         );
         assert_eq!(a.tabs()[2].name(), "three.md");
+    }
+
+    #[test]
+    fn the_file_panel_opens_notes_into_tabs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.md"), "# a\n").expect("write");
+        std::fs::write(dir.path().join("b.md"), "# b\n").expect("write");
+
+        let mut a = app("");
+        assert!(a.open_path(&dir.path().join("a.md")));
+        // Ctrl+B opens the panel over the note's folder, on the note.
+        ctrl(&mut a, 'b');
+        assert_eq!(a.focus, Focus::Files);
+        let panel = a.files.as_ref().expect("panel");
+        assert_eq!(panel.selected().map(|r| r.name.as_str()), Some("a.md"));
+
+        // Down, Enter: b.md opens in a second tab and the note has the keys.
+        key(&mut a, KeyCode::Down);
+        key(&mut a, KeyCode::Enter);
+        assert_eq!(a.focus, Focus::Editor);
+        assert_eq!(a.tabs().len(), 2);
+        assert_eq!(a.editor().text(), "# b\n");
+        assert!(a.files.is_some(), "the panel stays open");
+
+        // Ctrl+B from the note goes back to the panel; from the panel, closes it.
+        ctrl(&mut a, 'b');
+        assert_eq!(a.focus, Focus::Files);
+        key(&mut a, KeyCode::Esc);
+        assert_eq!(a.focus, Focus::Editor);
+        ctrl(&mut a, 'b');
+        ctrl(&mut a, 'b');
+        assert!(a.files.is_none());
+        assert_eq!(a.focus, Focus::Editor);
     }
 
     #[test]

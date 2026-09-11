@@ -10,6 +10,7 @@
 
 mod app;
 mod canvas_mode;
+mod files;
 mod picker;
 mod ui;
 mod view;

@@ -8,27 +8,69 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, Mode};
+use crate::app::{App, Focus, Mode};
+
+/// The screen has to be at least this wide for the file panel to be worth
+/// the room it takes from the note.
+const PANEL_MIN_SCREEN: u16 = 48;
 
 impl App {
     /// Draws one frame: the tab bar when there is more than one note, the
-    /// note, then the status bar.
+    /// file panel when it is open, the note, then the status bar.
     pub(crate) fn draw(&mut self, frame: &mut Frame) {
         let tab_bar = u16::from(self.tabs().len() > 1);
-        let [tabs, body, status] = Layout::vertical([
+        let [tabs, middle, status] = Layout::vertical([
             Constraint::Length(tab_bar),
             Constraint::Min(1),
             Constraint::Length(1),
         ])
         .areas(frame.area());
+
+        let (panel, body) = if self.files.is_some() && middle.width >= PANEL_MIN_SCREEN {
+            let width = (middle.width / 3).clamp(18, 32);
+            let [panel, body] =
+                Layout::horizontal([Constraint::Length(width), Constraint::Min(1)]).areas(middle);
+            (Some(panel), body)
+        } else {
+            (None, middle)
+        };
         self.body_height = usize::from(body.height);
         self.body_width = usize::from(body.width);
 
         self.draw_note(frame, body);
+        if let Some(panel) = panel {
+            self.draw_files(frame, panel);
+        }
         if tab_bar > 0 {
             self.draw_tabs(frame, tabs);
         }
         self.draw_status(frame, status);
+    }
+
+    /// The file panel with a divider on its right.
+    fn draw_files(&mut self, frame: &mut Frame, area: Rect) {
+        let [tree, divider] =
+            Layout::horizontal([Constraint::Min(1), Constraint::Length(1)]).areas(area);
+        let open = self.open_paths();
+        let open: Vec<&std::path::Path> = open.iter().map(std::path::PathBuf::as_path).collect();
+        let focused = self.focus == Focus::Files;
+        let theme = self.theme.clone();
+        let Some(panel) = &mut self.files else {
+            return;
+        };
+        let lines = panel.lines(
+            &theme,
+            usize::from(tree.width),
+            usize::from(tree.height),
+            focused,
+            &open,
+        );
+        frame.render_widget(Paragraph::new(Text::from(lines)), tree);
+        let bar = Line::styled("│", theme.table_border);
+        frame.render_widget(
+            Paragraph::new(Text::from(vec![bar; usize::from(divider.height)])),
+            divider,
+        );
     }
 
     /// The note itself, with the cursor placed.
@@ -78,7 +120,9 @@ impl App {
             Mode::Canvas(c) => c.is_typing(),
             Mode::Edit | Mode::ConfirmQuit | Mode::ConfirmClose => false,
         };
-        if cursor_in_status {
+        if self.focus == Focus::Files && !cursor_in_status {
+            // The panel draws its own cursor row; the terminal's stays hidden.
+        } else if cursor_in_status {
             let status_y = body.y + body.height;
             let x = self.status_left().width().min(usize::from(body.width));
             frame.set_cursor_position(Position::new(body.x + x as u16, status_y));
@@ -142,6 +186,16 @@ impl App {
     }
 
     pub(crate) fn status_left(&self) -> String {
+        if self.focus == Focus::Files {
+            if let Some((message, _)) = &self.notice {
+                return format!(" {message}");
+            }
+            let root = self
+                .files
+                .as_ref()
+                .map_or_else(String::new, |p| p.root().display().to_string());
+            return format!(" files  {root}");
+        }
         match &self.mode {
             Mode::Find { query, .. } => format!(" Find: {query}"),
             Mode::SaveAs { input } => format!(" Save as: {input}"),
@@ -186,6 +240,9 @@ impl App {
     }
 
     fn status_right(&self) -> String {
+        if self.focus == Focus::Files {
+            return "Enter open  ← → fold  r re-read  Esc back  ^B close ".to_owned();
+        }
         match &self.mode {
             Mode::Find { .. } => "Enter next   Esc done ".to_owned(),
             Mode::SaveAs { .. } => "Enter save   Esc cancel ".to_owned(),
@@ -193,7 +250,7 @@ impl App {
             Mode::ConfirmQuit | Mode::ConfirmClose => String::new(),
             Mode::Canvas(_) => "Esc done ".to_owned(),
             Mode::Edit => format!(
-                "^S save  ^O open  ^Q quit  ^F find  ^D draw  ^Z undo  ^P preview {} ",
+                "^S save  ^O open  ^B files  ^Q quit  ^F find  ^D draw  ^Z undo  ^P preview {} ",
                 if self.preview { "on" } else { "off" }
             ),
         }
