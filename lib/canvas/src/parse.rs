@@ -175,10 +175,7 @@ fn tokenize(line: &str) -> Option<Vec<Token>> {
                 match chars.next() {
                     None => return None, // unterminated quote
                     Some('"') => break,
-                    Some('\\') => match chars.next() {
-                        Some(e) => s.push(e),
-                        None => return None,
-                    },
+                    Some('\\') => s.push(chars.next()?),
                     Some(ch) => s.push(ch),
                 }
             }

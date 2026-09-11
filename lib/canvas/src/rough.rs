@@ -317,13 +317,13 @@ mod tests {
         let mut b = Rng::new(7);
         for _ in 0..100 {
             let x = a.signed();
-            assert!(x.to_bits() == b.signed().to_bits());
+            assert_eq!(x.to_bits(), b.signed().to_bits());
             assert!((-1.0..1.0).contains(&x));
             let u = a.unit();
-            assert!(u.to_bits() == b.unit().to_bits());
+            assert_eq!(u.to_bits(), b.unit().to_bits());
             assert!((0.0..1.0).contains(&u));
         }
-        assert!(Rng::new(1).unit().to_bits() != Rng::new(2).unit().to_bits());
+        assert_ne!(Rng::new(1).unit().to_bits(), Rng::new(2).unit().to_bits());
     }
 
     #[test]
