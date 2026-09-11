@@ -161,8 +161,7 @@ more in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Day-to-day work happens on the `dev` branch. `main` only ever receives
 releases. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to run the
-checks and open a pull request; [docs/RELEASING.md](docs/RELEASING.md)
-explains how a release is cut.
+checks, open a pull request, and cut a release.
 
 ## License
 
