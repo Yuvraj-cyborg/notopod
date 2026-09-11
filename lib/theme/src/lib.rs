@@ -439,6 +439,72 @@ fn fg(color: Color) -> Style {
     }
 }
 
+/// An sRGB colour, as drawn into an image.
+pub type Rgb = (u8, u8, u8);
+
+/// The RGB value `color` is painted with when a drawing is rendered as an
+/// image rather than as text.
+///
+/// `Reset` has no value of its own and becomes `fallback` (the terminal's
+/// foreground, when known). The sixteen ANSI names use the usual xterm
+/// defaults, indexed colours the xterm 256-colour table.
+pub fn to_rgb(color: Color, fallback: Rgb) -> Rgb {
+    match color {
+        Color::Reset => fallback,
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::Black => (0x00, 0x00, 0x00),
+        Color::Red => (0xcd, 0x31, 0x31),
+        Color::Green => (0x0d, 0xbc, 0x79),
+        Color::Yellow => (0xe5, 0xe5, 0x10),
+        Color::Blue => (0x24, 0x72, 0xc8),
+        Color::Magenta => (0xbc, 0x3f, 0xbc),
+        Color::Cyan => (0x11, 0xa8, 0xcd),
+        Color::Gray => (0xe5, 0xe5, 0xe5),
+        Color::DarkGray => (0x66, 0x66, 0x66),
+        Color::LightRed => (0xf1, 0x4c, 0x4c),
+        Color::LightGreen => (0x23, 0xd1, 0x8b),
+        Color::LightYellow => (0xf5, 0xf5, 0x43),
+        Color::LightBlue => (0x3b, 0x8e, 0xea),
+        Color::LightMagenta => (0xd6, 0x70, 0xd6),
+        Color::LightCyan => (0x29, 0xb8, 0xdb),
+        Color::White => (0xff, 0xff, 0xff),
+        Color::Indexed(i) => indexed_rgb(i, fallback),
+    }
+}
+
+fn indexed_rgb(i: u8, fallback: Rgb) -> Rgb {
+    const ANSI: [Color; 16] = [
+        Color::Black,
+        Color::Red,
+        Color::Green,
+        Color::Yellow,
+        Color::Blue,
+        Color::Magenta,
+        Color::Cyan,
+        Color::Gray,
+        Color::DarkGray,
+        Color::LightRed,
+        Color::LightGreen,
+        Color::LightYellow,
+        Color::LightBlue,
+        Color::LightMagenta,
+        Color::LightCyan,
+        Color::White,
+    ];
+    match i {
+        0..=15 => to_rgb(ANSI[usize::from(i)], fallback),
+        16..=231 => {
+            let n = i - 16;
+            let level = |v: u8| if v == 0 { 0 } else { 55 + 40 * v };
+            (level(n / 36), level((n / 6) % 6), level(n % 6))
+        }
+        232..=255 => {
+            let v = 8 + 10 * (i - 232);
+            (v, v, v)
+        }
+    }
+}
+
 /// The on-disk shape of a theme file.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
