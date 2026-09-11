@@ -1,0 +1,17 @@
+[package]
+name = "theme"
+description = "Colour themes for notopod: palette, styles, built-in themes and the theme file format"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ratatui.workspace = true
+serde.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

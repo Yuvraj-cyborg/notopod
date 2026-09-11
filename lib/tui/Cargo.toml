@@ -1,0 +1,23 @@
+[package]
+name = "tui"
+description = "Terminal user interface for notopod: live-preview Markdown editing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+canvas.workspace = true
+graphics.workspace = true
+syntax.workspace = true
+editor.workspace = true
+render.workspace = true
+theme.workspace = true
+anyhow.workspace = true
+ratatui = { workspace = true, features = ["crossterm", "layout-cache", "underline-color"] }
+unicode-width.workspace = true
+
+[lints]
+workspace = true

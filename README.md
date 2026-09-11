@@ -1,14 +1,18 @@
-# notopad
+# notopod
 
-Notes in your terminal, formatted while you type.
+Notes in your terminal, formatted while you type. Diagrams drawn by
+hand, with the keyboard.
 
-notopad is a text editor for Markdown notes that runs in the terminal.
+notopod is a text editor for Markdown notes that runs in the terminal.
 While you write, headings, lists, tables and code blocks are shown
 formatted. The one block your cursor is on shows its raw Markdown so you
-can edit it. Move away and it snaps back into shape.
+can edit it. Move away and it snaps back into shape. A ` ```draw ` block
+is a sketch: boxes, arrows and labels drawn the way Excalidraw draws
+them, as a real picture right there in the terminal, and there is a
+drawing mode to make them without typing a single coordinate.
 
 Your notes stay ordinary `.md` files. Open them anywhere else whenever
-you like.
+you like; a drawing is a short, readable code block there.
 
 ## What it looks like
 
@@ -35,33 +39,45 @@ You need Rust 1.88 or newer for the first option.
 **From source**
 
 ```
-git clone https://github.com/notopad/notopad
-cd notopad
-cargo install --path crates/notopad
+git clone https://github.com/Yuvraj-cyborg/notopod
+cd notopod
+cargo install --path .
+```
+
+This puts a `notopod` binary in `~/.cargo/bin`, which `rustup` already adds
+to your `PATH`. Run the same command again after pulling changes to update
+it; `cargo uninstall notopod` removes it. Without cloning:
+
+```
+cargo install --git https://github.com/Yuvraj-cyborg/notopod
 ```
 
 **With Nix**
 
 ```
-nix run github:notopad/notopad              # try it without installing
-nix profile install github:notopad/notopad  # install
+nix run github:Yuvraj-cyborg/notopod              # try it without installing
+nix profile install github:Yuvraj-cyborg/notopod  # install
 nix develop                                 # inside a clone: a shell with the Rust toolchain
 ```
 
 **Prebuilt binaries**
 
 Every release on the Releases page ships archives for Linux, macOS and
-Windows. Unpack and put `notopad` somewhere on your `PATH`.
+Windows. Unpack and put `notopod` somewhere on your `PATH`.
 
 ## Use
 
 ```
-notopad notes.md            open a note (created on first save if it does not exist)
-notopad                     start with an empty note; you are asked for a name when you save
-notopad render notes.md     print a note formatted, then exit
+notopod notes.md            open a note (created on first save if it does not exist)
+notopod                     start with an empty note; you are asked for a name when you save
+notopod render notes.md     print a note formatted, then exit
+notopod themes              list themes; `notopod themes nord` prints one to start your own
+notopod config              show where the config file and your themes are read from
+notopod --theme nord ...    use a theme for this run (`-t` for short)
+notopod --graphics braille  draw diagrams as dot art even where pictures would work (`-g`)
 ```
 
-`render` is for scripts and pipes, for example `notopad render todo.md | less -R`.
+`render` is for scripts and pipes, for example `notopod render todo.md | less -R`.
 It drops colours on its own when the output is not a terminal or when
 `NO_COLOR` is set. `--width 60` wraps at a fixed width; `--no-color` forces plain text.
 
@@ -80,6 +96,7 @@ It drops colours on its own when the output is not a terminal or when
 | Ctrl+S | Save |
 | Ctrl+F | Find. Matches as you type. Enter jumps to the next match, Esc stops |
 | Ctrl+G | Next match for the last search |
+| Ctrl+D | Draw: edit the drawing under the cursor, or start a new one here (see below) |
 | Ctrl+P | Turn live preview off or on. Off shows plain Markdown everywhere |
 | Ctrl+Q | Quit. Asks first if there are unsaved changes |
 
@@ -87,7 +104,7 @@ Pasting from the terminal works as usual.
 
 ## How the preview works
 
-notopad reads your note as a list of blocks: a heading, a paragraph, a
+notopod reads your note as a list of blocks: a heading, a paragraph, a
 list item, a table, a code block. Every block is drawn formatted except
 the one that contains your cursor, which is drawn exactly as you typed it.
 
@@ -109,49 +126,162 @@ Blocks are Markdown as you already know it: `#` headings, `*italic*` and
 
 ## Drawings
 
-Anything inside a code block is shown exactly as written, so you can
-draw with box characters and it stays put:
+A fenced block tagged `draw` is a picture. Its text is a list of shapes,
+one per line, placed on terminal columns and rows:
 
-    ```
-    ┌──────────┐      ┌──────────┐      ┌──────────┐
-    │  notes   │─────▶│  parser  │─────▶│  screen  │
-    └──────────┘      └──────────┘      └──────────┘
+    ```draw
+    rect 1,1 14x5 "Parser" round
+    ellipse 24,0 16x7 "Renderer" fill color=green
+    diamond 46,1 14x7 "ok?" color=yellow
+    line 8,3 -> 30,3 "AST"
+    line 32,3 -> 52,4 dashed
+    text 1,9 "hand-drawn, in your terminal" color=muted
     ```
 
-A diagram language that draws boxes and arrows for you, and a drawing
-mode for sketching with the keyboard, are next on the list.
+In the terminal it looks like this:
+
+![The drawing above, rendered: sketchy anti-aliased strokes in a hand-drawn font](docs/drawing.png)
+
+That is a real picture, not character art: anti-aliased strokes that
+wobble and overshoot the way a quick pen sketch does, hatching, and
+labels in Excalifont, the typeface Excalidraw uses. notopod paints it at
+your terminal's pixel resolution in your theme's colours, with a
+transparent background, and places it exactly over the cells the block
+occupies, so it scrolls and wraps with the text around it. `roughness`
+in your config or theme controls the wobble; `0` gives exact geometry.
+
+Pictures need a terminal that speaks the kitty graphics protocol:
+**kitty**, **Ghostty**, **WezTerm** and **Konsole** do. notopod asks the
+terminal on start-up and, anywhere else (Terminal.app, Alacritty, iTerm2,
+Windows Terminal, inside tmux), draws the same shapes as braille dot
+art instead, two by four dots per cell:
+
+```
+ ⡞⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⢳          ⢠⢊⠁⠲⡈⠑⢄⠈⠳⡈⠑⢌⠑⢄            ⣠⠞⠑⢄
+ ⡇            ⢸      ⢠⡀ ⢠⠣⣌⠱⣄⠈⠢⡀⠑⢆⠈⠲⡄⠱⡄⢣         ⣠⠞⠁   ⠳⣄
+ ⡇   Parser   ⢸⠤⠤⠤AST⠤⠬⡶⢼⢀⠈⠳Renderer⡈⠢⡀⢈⠆   ⠓⢀ ⢀⠞⠁       ⠑⣄
+ ⡇            ⢸      ⠰⠋ ⠸⡄⠳⣄⠈⠳⣌⠑⣄⠈⠢⡀⠙⢄ ⡜⠉ ⠈⠓ ⠼⠷⣅   ok?    ⠈⢳
+ ⢧⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⠜          ⠹⣄⠈⠑⢄⠈⠳⡌⠳⢄⠈⠒⣠⠞         ⠑⣄       ⣀⠔⠁
+```
+
+`--graphics kitty` forces pictures (say, in a terminal notopod does not
+recognise), `--graphics braille` forces dot art, and `[graphics] mode`
+in the config file sets the default. Pictures ride on colour codes, so
+`--no-color` and `NO_COLOR` also mean braille.
+
+The language:
+
+| Statement | Meaning |
+|---|---|
+| `rect X,Y WxH` | A rectangle with its top-left corner at column X, row Y |
+| `ellipse X,Y WxH`, `diamond X,Y WxH` | The same box, drawn as an ellipse or a diamond |
+| `line A -> B -> C` | A line through points; `->`, `<-`, `<->` put arrowheads on the ends, `--` none |
+| `arrow A B` | Short for `line A -> B` |
+| `text X,Y "words"` | Free text |
+| `size WxH` | Minimum canvas size (it always grows to fit) |
+| `"label"` | On a box: centred inside it. On a line: on its midpoint |
+| `fill`, `dashed`, `round`, `color=red` | Hatch the inside, dash the stroke, round the corners, colour it. Colours are the theme's `red orange yellow green cyan blue magenta muted fg`, an ANSI name, or `#rrggbb` |
+| `# comment` | Kept, not drawn |
+
+A line whose end lies inside a box is drawn up to the box's border, so
+`line 5,3 -> 30,3` from inside "Parser" to inside "Renderer" connects the
+two boxes exactly. Lines that do not parse are left alone, never
+rewritten.
+
+### Drawing with the keyboard
+
+Press **Ctrl+D** on a draw block to edit it visually, or anywhere else to
+start a new drawing right there. The block stays rendered; the cursor
+becomes a cell on the canvas.
+
+| Key | What it does |
+|---|---|
+| Arrows | Move the cursor. Shift moves five cells |
+| `r` `e` `d` | Start a rectangle / ellipse / diamond at the cursor; move to the opposite corner; Enter places it |
+| `l` `a` | Start a line / arrow at the cursor; Space adds a corner; Enter finishes at the cursor |
+| `t` | Type a label for the shape under the cursor, or free text at the cursor. Enter keeps it, Esc drops it |
+| `m` | Pick up the shape under the cursor; arrows drag it; Enter drops it, Esc puts it back |
+| `x` Delete Backspace | Delete the shape under the cursor |
+| `f` `-` `o` `c` | Toggle fill, dashes, rounded corners; cycle the colour of the shape under the cursor |
+| `?` | Show the keys |
+| Ctrl+Z / Ctrl+Y | Undo / redo, one drawing step at a time |
+| Ctrl+S | Save |
+| Esc | Cancel the current tool, or leave the drawing when no tool is active |
+
+Every action rewrites the block's text, so what you see is always what
+is in the file. Start a line inside one box and finish it inside another
+to connect them. While you draw, the picture shows a faint grid, the cell
+under the cursor, and the shape you are placing or moving.
+
+## Themes
+
+notopod ships with `default`, `mono`, `catppuccin-mocha`, `gruvbox-dark`,
+`nord`, `tokyo-night`, `dracula`, `solarized-dark` and `solarized-light`.
+`default` uses your terminal's own colours, so it fits whatever your
+terminal already looks like.
+
+Pick one for a run with `--theme nord`, or for good in the config file:
+
+```toml
+# ~/.config/notopod/config.toml   ($NOTOPOD_CONFIG or $XDG_CONFIG_HOME/notopod/config.toml also work)
+theme = "nord"
+
+[canvas]
+roughness = 0.7    # 0.0 draws exact geometry, 1.0 is very sketchy
+
+[graphics]
+mode = "auto"      # auto | kitty | braille: how drawings are shown
+```
+
+To make your own, start from a built-in one:
+
+```
+mkdir -p ~/.config/notopod/themes
+notopod themes nord > ~/.config/notopod/themes/mine.toml
+```
+
+A theme file is mostly a palette of nine colours; every style is derived
+from it. Any element can be overridden in `[styles]` with a string like
+`"yellow bold underline"`. `notopod themes default` prints a commented
+file that lists what can be set.
 
 ## What is not there yet
 
-This is version 0.1. It edits and previews notes well. It does not yet have:
+It edits and previews notes well and draws diagrams. It does not yet
+have:
 
 - selecting text, copy and cut
-- a diagram language: write `a -> b`, get boxes and arrows
-- a drawing mode for sketching with the keyboard
+- ` ```mermaid ` blocks: flowcharts and sequence diagrams laid out for you
+- a file tree, search across notes, `[[links]]` and backlinks
 - syntax colours inside code blocks
-- links between notes and search across many notes
-- themes and vim-style keys
+- vim-style keys
+- pictures over Sixel or the iTerm2 protocol; export to PNG or SVG; runnable code blocks
 
 ## Project layout
 
-One Cargo workspace, five crates. Each can be published and used on its own.
+One Cargo workspace. The `notopod` binary is the root package; the parts
+it is built from are library crates under `lib/`.
 
-| Crate | What it does |
+| Path | What it does |
 |---|---|
-| `notopad-core` | Parses Markdown into blocks that remember where in the file they came from |
-| `notopad-render` | Turns blocks into styled, wrapped terminal text |
-| `notopad-editor` | The text buffer: cursor, editing, undo, saving |
-| `notopad-tui` | The screen: live preview, keys, status bar |
-| `notopad` | The `notopad` command |
+| `src/` | The `notopod` command: arguments, config file, dispatch |
+| `lib/syntax` | Parses a note into blocks that remember where in the file they came from |
+| `lib/canvas` | The ` ```draw ` language, its picture renderer and its braille fallback |
+| `lib/graphics` | Shows pictures in the terminal: kitty graphics protocol, capability probing, image cache |
+| `lib/render` | Turns blocks into styled, wrapped terminal text |
+| `lib/theme` | Palettes, styles, built-in themes and the theme file format |
+| `lib/editor` | The text buffer: cursor, editing, undo, saving |
+| `lib/tui` | The screen: live preview, keys, status bar, drawing mode |
 
-There is more in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The library crates have short names (`syntax`, `render`, ...) and are not
+published to crates.io on their own; the product is the binary. There is
+more in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Contributing
 
 Day-to-day work happens on the `dev` branch. `main` only ever receives
 releases. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to run the
-checks and open a pull request; [docs/RELEASING.md](docs/RELEASING.md)
-explains how a release is cut.
+checks, open a pull request, and cut a release.
 
 ## License
 

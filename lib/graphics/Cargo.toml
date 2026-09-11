@@ -1,0 +1,22 @@
+[package]
+name = "graphics"
+description = "Pictures in the terminal for notopod: kitty graphics protocol, capability probing and an image cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+canvas.workspace = true
+render.workspace = true
+theme.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
+[lints]
+workspace = true

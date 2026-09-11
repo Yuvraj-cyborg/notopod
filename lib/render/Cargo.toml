@@ -1,0 +1,19 @@
+[package]
+name = "render"
+description = "Renders notopod documents to styled terminal text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+canvas.workspace = true
+syntax.workspace = true
+theme.workspace = true
+ratatui.workspace = true
+unicode-width.workspace = true
+
+[lints]
+workspace = true

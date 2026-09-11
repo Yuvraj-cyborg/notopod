@@ -1,0 +1,33 @@
+# The default theme uses the terminal's own ANSI colours, so it follows
+# whatever palette the terminal is configured with and works on light and
+# dark backgrounds alike. Leaving a colour out keeps this default.
+#
+# Copy this file to ~/.config/notopod/themes/<name>.toml and set
+# `theme = "<name>"` in ~/.config/notopod/config.toml to use it.
+name = "default"
+
+[colors]
+fg = "none"        # the terminal's foreground
+muted = "none"     # "none" here means: use the dim attribute
+red = "red"
+orange = "lightred"
+yellow = "yellow"
+green = "green"
+cyan = "cyan"
+blue = "blue"
+magenta = "magenta"
+
+# Every element can be overridden. Tokens: a colour (palette name, ANSI
+# name, #rrggbb or 0-255), bg:<colour>, bold, dim, italic, underline,
+# strike, reverse.
+#
+# [styles]
+# heading1 = "yellow bold underline"
+# code = "red"
+# link = "blue underline"
+# status_bar = "reverse"
+# canvas_stroke = "fg"
+# canvas_cursor = "reverse"
+
+[canvas]
+roughness = 0.7    # 0.0 draws exact geometry, 1.0 is very sketchy

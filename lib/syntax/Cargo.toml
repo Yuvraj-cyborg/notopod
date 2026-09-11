@@ -1,0 +1,15 @@
+[package]
+name = "syntax"
+description = "Document model and Markdown parser for notopod (blocks with source spans)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+pulldown-cmark.workspace = true
+
+[lints]
+workspace = true

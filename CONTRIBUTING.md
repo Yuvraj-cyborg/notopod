@@ -10,7 +10,8 @@ the same tools.
 
 ```
 cargo build
-cargo run -p notopad -- /tmp/scratch.md
+cargo run -- /tmp/scratch.md
+cargo install --path .      # puts `notopod` on your PATH for day-to-day use
 ```
 
 ## Before you push
@@ -49,23 +50,64 @@ release: v0.2.0
 If a user would notice the change, add a line under **Unreleased** in
 `CHANGELOG.md` in the same pull request.
 
+## Releases
+
+Versions follow [Semantic Versioning](https://semver.org/): while we are
+on `0.x`, a minor bump may break things, a patch bump may not. One
+version for the whole workspace, set in `[workspace.package]` in the root
+`Cargo.toml`; every crate inherits it.
+
+1. On `dev`: bump the version, move the **Unreleased** notes in
+   `CHANGELOG.md` under a new `## [X.Y.Z] - YYYY-MM-DD` heading,
+   `cargo build` to refresh `Cargo.lock`, commit as `release: vX.Y.Z`.
+2. Merge `dev` into `main` (merge commit, not squash).
+3. Tag on `main` and push the tag:
+
+   ```
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "notopod vX.Y.Z" && git push origin vX.Y.Z
+   ```
+
+The **Release** workflow checks that the tag matches `Cargo.toml`, makes
+the GitHub release with that changelog section as its notes, and attaches
+binaries for Linux (x86_64, aarch64), macOS (x86_64, aarch64) and
+Windows (x86_64). Merge `main` back into `dev` afterwards.
+
+Nothing goes to crates.io: the library crates have short unprefixed names
+that are taken or too generic for the registry, so they are
+`publish = false`, and a binary cannot be published with unpublished path
+dependencies. Users get releases, Nix, or `cargo install --git`.
+
 ## Where things live
 
 | Path | Contents |
 |---|---|
-| `crates/notopad-core` | Document model, Markdown parser, line index |
-| `crates/notopad-render` | Theme, block and inline rendering, wrapping, ANSI output |
-| `crates/notopad-editor` | Rope buffer, cursor, undo history, list-aware Enter, search, save |
-| `crates/notopad-tui` | App state, key handling, screen layout, drawing |
-| `crates/notopad` | The command-line entry point |
-| `docs/` | Architecture notes and the release procedure |
+| `src/` | The `notopod` command-line entry point and config file (root package) |
+| `lib/syntax` | Document model, Markdown parser, line index |
+| `lib/canvas` | ` ```draw ` language: model, parser/serialiser; picture renderer (tiny-skia, Excalifont) and braille renderer |
+| `lib/graphics` | Pictures in the terminal: kitty graphics protocol, capability probe, image cache |
+| `lib/render` | Block and inline rendering, wrapping, ANSI output, the `Drawings` trait |
+| `lib/theme` | `Theme`, `Palette`, style strings, built-in theme TOML files |
+| `lib/editor` | Rope buffer, cursor, undo history, list-aware Enter, search, save |
+| `lib/tui` | App state, key handling, screen layout, drawing, canvas mode |
+| `docs/` | Architecture notes |
+
+New library crates go in `lib/<name>` with a short name and
+`publish = false`, and get one line in the tables here and in the README.
 
 `docs/ARCHITECTURE.md` explains how the pieces fit and how to add a new
 kind of block.
 
 ## Testing the screen
 
-Layout logic (`notopad-tui/src/view.rs`) has unit tests. For behaviour,
-run the editor and try the awkward cases: a list with an empty item,
-Enter inside a word, Ctrl+Z after pasting, a very long line, resizing the
-terminal, a file that does not exist yet.
+Layout logic (`lib/tui/src/view.rs`) and the canvas-mode key flows
+(`lib/tui/src/app.rs`, driving `App::handle_key` with synthetic events)
+have unit tests. For behaviour, run the editor and try the awkward
+cases: a list with an empty item, Enter inside a word, Ctrl+Z after
+pasting, a very long line, resizing the terminal, a file that does not
+exist yet, a drawing in the top-left corner, Esc in the middle of placing
+a line.
+
+`tmux` is handy for looking at the real thing without a hand on the
+keyboard: start `notopod` in a detached session, `tmux send-keys`, then
+`tmux capture-pane -p`.

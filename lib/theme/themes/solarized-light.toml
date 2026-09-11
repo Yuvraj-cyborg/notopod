@@ -1,0 +1,13 @@
+# Solarized, light background. https://ethanschoonover.com/solarized
+name = "solarized-light"
+
+[colors]
+fg = "#657b83"       # base00
+muted = "#93a1a1"    # base1
+red = "#dc322f"
+orange = "#cb4b16"
+yellow = "#b58900"
+green = "#859900"
+cyan = "#2aa198"
+blue = "#268bd2"
+magenta = "#d33682"

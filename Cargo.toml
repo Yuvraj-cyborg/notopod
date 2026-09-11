@@ -1,33 +1,81 @@
+# The `notopod` binary lives at the workspace root, so `cargo run`,
+# `cargo install --path .` and `cargo build` all do the obvious thing.
+# Library crates live under lib/.
+[package]
+name = "notopod"
+description = "A terminal notes editor with live Markdown preview"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+publish = false
+
+[[bin]]
+name = "notopod"
+path = "src/main.rs"
+
+[dependencies]
+syntax.workspace = true
+graphics.workspace = true
+render.workspace = true
+theme.workspace = true
+tui.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+crossterm.workspace = true
+serde.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true
+
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["lib/*"]
+# Include the root package so plain `cargo test` / `cargo clippy` cover
+# everything, not just the binary.
+default-members = [".", "lib/*"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT"
-repository = "https://github.com/notopad/notopad"
-homepage = "https://github.com/notopad/notopad"
+repository = "https://github.com/Yuvraj-cyborg/notopod"
+homepage = "https://github.com/Yuvraj-cyborg/notopod"
 keywords = ["notes", "markdown", "tui", "editor", "terminal"]
 categories = ["text-editors", "command-line-utilities"]
 
 [workspace.dependencies]
-# Internal crates. Version + path so they can be published to crates.io
-# individually while the workspace always builds against the local copy.
-notopad-core = { version = "0.1.0", path = "crates/notopad-core" }
-notopad-render = { version = "0.1.0", path = "crates/notopad-render" }
-notopad-editor = { version = "0.1.0", path = "crates/notopad-editor" }
-notopad-tui = { version = "0.1.0", path = "crates/notopad-tui" }
+# Internal crates. Short, unprefixed names; they are not published to
+# crates.io (see `publish = false` in each), so no version is needed here.
+syntax = { path = "lib/syntax" }
+canvas = { path = "lib/canvas" }
+graphics = { path = "lib/graphics" }
+render = { path = "lib/render" }
+editor = { path = "lib/editor" }
+theme = { path = "lib/theme" }
+tui = { path = "lib/tui" }
 
 # External
+ab_glyph = "0.2"
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 crossterm = "0.29"
 pulldown-cmark = { version = "0.13", default-features = false }
 ratatui = { version = "0.30", default-features = false }
 ropey = { version = "1.6", default-features = false, features = ["simd"] }
+rustix = { version = "1.0", features = ["event", "stdio"] }
+serde = { version = "1.0", features = ["derive"] }
 tempfile = "3.20"
+png = "0.18"
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
+toml = "1.1"
 unicode-width = "0.2"
 
 [workspace.lints.rust]
@@ -47,6 +95,11 @@ cast_possible_truncation = "allow"
 cast_possible_wrap = "allow"
 cast_sign_loss = "allow"
 cast_precision_loss = "allow"
+
+# Pictures are rasterised and PNG-encoded on every keystroke while
+# drawing; unoptimised image code makes debug builds feel sluggish.
+[profile.dev.package."*"]
+opt-level = 2
 
 [profile.release]
 lto = "thin"

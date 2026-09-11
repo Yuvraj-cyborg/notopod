@@ -1,0 +1,18 @@
+# No colour at all: bold, italic, underline and dim carry the structure.
+name = "mono"
+
+[colors]
+fg = "none"
+muted = "none"
+red = "none"
+orange = "none"
+yellow = "none"
+green = "none"
+cyan = "none"
+blue = "none"
+magenta = "none"
+
+[styles]
+code = "bold"
+canvas_selected = "bold"
+canvas_preview = "dim"

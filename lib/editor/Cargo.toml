@@ -1,0 +1,18 @@
+[package]
+name = "editor"
+description = "Text buffer, cursor, and undo history for the notopod editor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ropey.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

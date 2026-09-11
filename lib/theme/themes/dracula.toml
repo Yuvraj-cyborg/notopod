@@ -1,0 +1,13 @@
+# Dracula. https://draculatheme.com
+name = "dracula"
+
+[colors]
+fg = "#f8f8f2"
+muted = "#6272a4"    # comment
+red = "#ff5555"
+orange = "#ffb86c"
+yellow = "#f1fa8c"
+green = "#50fa7b"
+cyan = "#8be9fd"
+blue = "#bd93f9"     # purple; Dracula has no blue
+magenta = "#ff79c6"  # pink
