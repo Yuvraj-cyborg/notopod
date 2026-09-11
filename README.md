@@ -1,92 +1,92 @@
+<div align="center">
+
+<img src="docs/logo.png" alt="" width="420">
+
 # notopod
 
-<img src="docs/logo.png" alt="A pencil drawing two linked notes" width="320">
+**Notes in your terminal, formatted while you type.**<br>
+**Diagrams drawn by hand, with the keyboard.**
 
-Notes in your terminal, formatted while you type. Diagrams drawn by hand,
-with the keyboard.
+[![CI](https://github.com/Yuvraj-cyborg/notopod/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuvraj-cyborg/notopod/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Yuvraj-cyborg/notopod?color=4c7fd4)](https://github.com/Yuvraj-cyborg/notopod/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-4c7fd4)](LICENSE)
 
-![A draw block open in kitty: sketchy boxes, a yellow diamond, a hatched
-green box and labelled arrows, all in a hand-drawn font](docs/screenshot.png)
+</div>
+
+![A draw block open in kitty: sketchy boxes, a yellow diamond, a hatched green box and labelled arrows, all in a hand-drawn font](docs/screenshot.png)
 
 That is an ordinary `.md` file. The diagram is a fenced code block, and
-notopod paints it as a real picture at the terminal's pixel resolution.
+notopod paints it as a real picture at your terminal's pixel resolution —
+press Ctrl+D and you can redraw it with single keys without leaving the note.
 
 ## What it is
 
-A Markdown editor for the terminal. One binary, no runtime.
+A Markdown editor for the terminal. One binary, no runtime, about 2 MB.
 
-- **Formatted while you type.** Headings, lists, tasks, tables and quotes
-  are shown formatted as you write. The block your cursor is in shows its
-  raw Markdown; leave it and it snaps back. Nothing is hidden or
-  rewritten — the file on disk is what you typed, byte for byte.
-- **Drawings that are pictures.** A ` ```draw ` block is a sketch:
-  strokes that wobble like a quick pen drawing, hatched fills, labels in
-  Excalifont. Ctrl+D places boxes and arrows with single keys. Terminals
-  that speak the kitty graphics protocol show the picture; the rest get
-  the same shapes as braille dots.
-- **A folder of notes, not just a file.** Tabs, a file panel, `[[links]]`
-  you can follow, and a graph of the whole folder.
-- **Plain files.** Your notes are `.md`, and a drawing is a short,
-  readable code block in any other editor.
-- **Nine themes** or your own, and vim keys if you want them.
+- **Formatted as you write.** Headings, lists, tables and tasks render in
+  place. The block your cursor is in shows its raw Markdown and snaps back
+  when you leave it. Nothing is hidden or rewritten: the file on disk is
+  what you typed, byte for byte.
+- **Drawings, not character art.** A ` ```draw ` block is a real picture —
+  strokes that wobble like a quick pen sketch, hatched fills, labels in
+  Excalifont — painted over the cells the block occupies. Terminals without
+  the kitty graphics protocol get the same shapes in braille dots.
+- **A folder, not a file.** Tabs, a file panel, `[[links]]` you can follow,
+  and a graph of how your notes connect.
+- **Yours to keep.** Plain `.md` files, and a drawing is a short, readable
+  code block in any other editor.
+- **Nine themes**, a small config file, and vim keys when you want them.
 
 ## Install
 
-**From source** — needs Rust 1.88 or newer.
-
 ```
-cargo install --git https://github.com/Yuvraj-cyborg/notopod
-```
-
-In a clone, `cargo install --path .` does the same from your working
-copy. Either way `notopod` lands in `~/.cargo/bin`, which `rustup`
-already put on your `PATH`. Run the command again after pulling to
-update; `cargo uninstall notopod` removes it.
-
-**With Nix**
-
-```
-nix run github:Yuvraj-cyborg/notopod              # try it without installing
-nix profile install github:Yuvraj-cyborg/notopod  # install
-nix develop                                       # in a clone: a Rust shell
+cargo install --git https://github.com/Yuvraj-cyborg/notopod   # needs Rust 1.88+
+nix run github:Yuvraj-cyborg/notopod                           # or try it with Nix
 ```
 
-**Prebuilt binaries** — every release ships Linux, macOS and Windows
-archives on the Releases page. Unpack and put `notopod` on your `PATH`.
+Every release also ships prebuilt binaries for Linux, macOS and Windows.
+Inside a clone, `cargo install --path .` installs your working copy — run
+it again after pulling, since an install is a snapshot and not a link.
 
 ## Use
 
-Point it at a folder and it shows you what is in it:
-
 ```
 notopod ~/notes             a folder: the file panel opens on it
-notopod notes.md            one note (created on first save if new)
+notopod notes.md            one note (created on first save if it is new)
 notopod ~/notes plan.md     both: the folder on the left, the note open
-notopod                     an empty note; you are asked for a name when you save
+notopod                     an empty note; it asks for a name when you save
 ```
 
-The folder you name stays where the file panel and the graph start, for
-the whole session — open a note from anywhere else and the panel still
-shows your notes.
-
-The rest:
+The folder you name is where the panel and the graph stay for the rest of
+the session, however far you wander from it.
 
 ```
-notopod render notes.md      print a note formatted, then exit
-notopod graph [DIR]          the notes in a folder and the links between them
-notopod themes               try themes on a sample note and keep one
-notopod themes --list        just the names
-notopod themes nord          print a theme's TOML, to copy or redirect
-notopod config               where the config file and your themes live
-notopod --theme nord ...     a theme for this run (-t)
-notopod --graphics braille   dot art where pictures would work (-g)
-notopod --vim ...            vim keys for this run
+notopod render notes.md     print a note formatted, then exit
+notopod graph [DIR]         the notes in a folder and the links between them
+notopod themes              try themes on a sample note and keep one
+notopod config              where the config file and your themes live
 ```
 
-`render` is for pipes: `notopod render todo.md | less -R`. It drops
-colour by itself when the output is not a terminal or `NO_COLOR` is set.
+`render` is made for pipes — `notopod render todo.md | less -R` — and drops
+colour by itself when it is not writing to a terminal. `--theme nord`,
+`--vim` and `--graphics braille` apply to a single run.
 
 ## Keys
+
+Ctrl+S saves, Ctrl+Q quits, Ctrl+F finds, Ctrl+Z undoes. The ones worth
+learning:
+
+| | |
+|---|---|
+| **Ctrl+D** | Draw: edit the drawing under the cursor, or start one here |
+| **Ctrl+B** | The file panel |
+| **Ctrl+K** | The graph of your notes |
+| **Ctrl+]** | Follow the link under the cursor |
+| **Ctrl+T** / **Ctrl+W** | New tab / close this tab (Ctrl+PageUp and Ctrl+PageDown switch) |
+| **Ctrl+P** | Turn the preview off, to see plain Markdown |
+
+<details>
+<summary>Every key</summary>
 
 | Key | What it does |
 |---|---|
@@ -99,22 +99,12 @@ colour by itself when the output is not a terminal or `NO_COLOR` is set.
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 | Ctrl+S | Save |
 | Ctrl+F / Ctrl+G | Find as you type / next match |
-| **Ctrl+B** | **The file panel: open it, go to it, close it** |
-| Ctrl+K | The graph of your notes |
-| Ctrl+D | Draw: edit the drawing under the cursor, or start one |
-| Ctrl+] | Follow the link under the cursor |
 | Ctrl+O | Open a note by name, in a new tab |
-| Ctrl+T / Ctrl+W | New tab / close this tab |
-| Ctrl+PageDown / Ctrl+PageUp | Next / previous tab |
-| Ctrl+P | Live preview off or on |
 | Ctrl+Q | Quit, asking first if anything is unsaved |
 
-## The file panel
+In the file panel:
 
-**Ctrl+B** opens a tree of your folder on the left — directories first,
-then notes, nothing hidden. It starts on the note you are in.
-
-| In the panel | |
+| Key | What it does |
 |---|---|
 | ↑ ↓ or `j` `k` | Move |
 | Enter | Open a note, or fold a directory open and shut |
@@ -124,28 +114,15 @@ then notes, nothing hidden. It starts on the note you are in.
 | Esc | Back to the note, panel still open |
 | Ctrl+B | Put the panel away |
 
-Only the directories you unfold are read, so a panel over a big tree
-costs nothing.
+Only the directories you unfold are read, so a panel over a big tree costs
+nothing. The drawing keys are in [docs/DRAWING.md](docs/DRAWING.md).
 
-## Links and the graph
+</details>
 
-Notes link the way Obsidian's do: `[[Plan]]` points at `Plan.md`
-anywhere under the folder, `[[Plan|the plan]]` shows other words, and an
-ordinary `[text](other.md)` works too. **Ctrl+]** follows the link under
-the cursor into a tab. A `[[name]]` with no note yet becomes a new note,
-so you can write the link first and the note after.
+## How it looks while you type
 
-**Ctrl+K** draws the whole folder as a graph: every note an ellipse
-labelled with its first heading, every link an arrow, notes with many
-links filled and coloured, notes with none dashed. Arrows move between
-them, Tab walks them in order, Enter opens one, Esc puts it away.
-`notopod graph` prints the same picture without the editor.
-
-## How the preview works
-
-A note is a list of blocks — a heading, a paragraph, a list item, a
-table, a code block. Every block is drawn formatted except the one
-holding your cursor, which is drawn exactly as you typed it.
+A note is a list of blocks, and every one is drawn formatted except the
+block holding your cursor, which stays exactly as you typed it:
 
 ```
 What you typed          What you see, with the cursor on the second line
@@ -155,10 +132,9 @@ What you typed          What you see, with the cursor on the second line
 - [x] bread             ☑ bread            formatted
 ```
 
-The Markdown is the Markdown you know: `#` headings, `*italic*`,
-`**bold**`, `` `code` ``, `- ` bullets, `1. ` numbers, `- [ ] ` tasks,
-`> ` quotes, pipe tables, fenced code, `---` rules, links and
-`~~strikethrough~~`. A `---` block at the top is front matter.
+It is ordinary Markdown throughout: headings, emphasis, code, bullets,
+numbers, tasks, quotes, pipe tables, rules, links, and front matter at the
+top of the file.
 
 ## Drawings
 
@@ -175,89 +151,75 @@ A block tagged `draw` is a picture. Six lines of it:
 
 ![The block above, rendered: sketchy anti-aliased strokes in a hand-drawn font](docs/drawing.png)
 
-Press **Ctrl+D** to draw with single keys — `r` rectangle, `e` ellipse,
-`d` diamond, `l` line, `a` arrow, `t` label, `m` move, `x` delete — and
-every key rewrites the block's text, so the file always matches the
-picture. The whole language and every drawing key are in
-[docs/DRAWING.md](docs/DRAWING.md).
+**Ctrl+D** turns the block into a canvas: `r` rectangle, `e` ellipse, `d`
+diamond, `l` line, `a` arrow, `t` label, `m` move, `x` delete. Every key
+rewrites the block's text, so the file always matches the picture. The
+language and the rest of the keys are in
+[docs/DRAWING.md](docs/DRAWING.md) — this project's logo is one of these
+blocks.
+
+## Links and the graph
+
+Notes link the way Obsidian's do: `[[Plan]]` finds `Plan.md` anywhere under
+the folder, `[[Plan|the plan]]` shows other words, and a plain
+`[text](other.md)` works too. **Ctrl+]** follows the link under your
+cursor, and a `[[name]]` with no note behind it yet becomes a new note — so
+you can write the link first and the note after.
+
+**Ctrl+K** draws the whole folder: every note an ellipse labelled with its
+heading, every link an arrow, busy notes filled and coloured, lonely ones
+dashed. Arrows move between them, Tab walks them in order, Enter opens one.
+`notopod graph` prints the same picture without the editor.
 
 ## Themes and config
 
-Built in: `default`, `mono`, `catppuccin-mocha`, `gruvbox-dark`, `nord`,
-`tokyo-night`, `dracula`, `solarized-dark`, `solarized-light`. `default`
-borrows your terminal's own colours.
-
-`notopod themes` is a picker: themes on the left, a sample note on the
-right in whichever is highlighted, drawings and all. Typing filters,
-Enter saves your choice, Esc leaves it alone.
-
-The config file is `~/.config/notopod/config.toml` (`notopod config`
-says where). Saving a theme keeps the rest of the file, comments and all.
+`notopod themes` is a picker: the themes on the left, a sample note on the
+right in whichever one is highlighted, drawings and all. Enter keeps your
+choice, and saving it leaves the rest of your config file alone, comments
+included.
 
 ```toml
-theme = "nord"
+# ~/.config/notopod/config.toml
+theme = "nord"       # or mono, catppuccin-mocha, gruvbox-dark, dracula, ...
 
 [canvas]
-roughness = 0.7    # 0.0 exact geometry, 1.0 very sketchy
+roughness = 0.7      # 0.0 exact geometry, 1.0 very sketchy
 
 [graphics]
-mode = "auto"      # auto | kitty | braille
+mode = "auto"        # auto | kitty | braille
 
 [keys]
 vim = false
 ```
 
-For your own theme, start from a built-in one:
-
-```
-mkdir -p ~/.config/notopod/themes
-notopod themes nord > ~/.config/notopod/themes/mine.toml
-```
+`default` borrows your terminal's own colours, so notopod looks like the
+rest of your setup. For a theme of your own, start from a built-in one:
+`notopod themes nord > ~/.config/notopod/themes/mine.toml`.
 
 ## Vim keys
 
-Off by default; `--vim` or `[keys] vim = true`. You start in normal mode.
-`h j k l w b e 0 ^ $ gg G` move with counts, `d y c` work over them and
-doubled for lines, plus `D C Y S x X r J p P u Ctrl+R >> <<`. `i a I A o
-O` go into insert mode — the ordinary editor — and Esc comes back. `/`
-searches, `n` and `N` step. `gt` `gT` change tabs, `gf` follows a link,
-`ZZ` saves and quits, and `:` knows `w q q! wq x e bn bp bd tabnew files
-graph draw theme noh` and line numbers. The Ctrl keys above keep working
-in both modes. No visual mode yet, because there is no selection yet.
+`[keys] vim = true`, or `--vim` for a single run. Normal and insert mode,
+motions with counts, `d y c` over them and doubled for lines, `p P u
+Ctrl+R >> <<`, `/ n N` to search, `gt gT` for tabs, `gf` to follow a link,
+`ZZ` to save and quit, and a `:` line that knows `w q wq e bn bp tabnew
+files graph draw theme` and line numbers. The Ctrl keys above keep working
+in both modes, so turning this on takes nothing away. No visual mode yet,
+because there is no selection yet.
 
 ## Not there yet
 
-- selecting text, copy and cut (and with them, vim's visual mode)
-- ` ```mermaid ` blocks
-- search across notes, and a list of what links here
-- syntax colours inside code blocks
-- Sixel and iTerm2 pictures; export to PNG or SVG
+Selecting text (and with it vim's visual mode), ` ```mermaid ` blocks,
+search across notes, syntax colours inside code blocks, Sixel and iTerm2
+pictures, export to PNG or SVG.
 
-## Project layout
+## The code
 
-One Cargo workspace. The `notopod` binary is the root package; what it is
-built from are library crates under `lib/`.
-
-| Path | What it does |
-|---|---|
-| `src/` | The command: arguments, config file, dispatch |
-| `lib/syntax` | Parses a note into blocks that remember where they came from |
-| `lib/canvas` | The ` ```draw ` language, its picture renderer and braille fallback |
-| `lib/graphics` | Pictures in the terminal: kitty graphics protocol, probing, cache |
-| `lib/render` | Blocks into styled, wrapped terminal text |
-| `lib/theme` | Palettes, styles, built-in themes, the theme file format |
-| `lib/editor` | The text buffer: cursor, editing, undo, saving |
-| `lib/notes` | Links between notes in a folder, and the graph they make |
-| `lib/tui` | The screen: tabs, preview, keys, file panel, graph, drawing mode |
-
-More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Contributing
-
-Work happens on `dev`; `main` only receives releases.
-[CONTRIBUTING.md](CONTRIBUTING.md) has the checks, the branch rules and
-how a release is cut.
-
-## License
+One Cargo workspace: the `notopod` binary at the root and library crates
+under `lib/` — `syntax` parses, `canvas` draws, `graphics` puts pictures on
+the terminal, `render` styles and wraps, `theme` colours, `editor` holds
+the text, `notes` finds the links, `tui` runs the screen.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how they fit
+together, and [CONTRIBUTING.md](CONTRIBUTING.md) has the checks and the
+branch rules — work happens on `dev`, and `main` only receives releases.
 
 MIT. See [LICENSE](LICENSE).
