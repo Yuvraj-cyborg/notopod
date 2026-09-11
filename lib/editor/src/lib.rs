@@ -1,11 +1,11 @@
-//! The text buffer behind notopad's editor.
+//! The text buffer behind notopod's editor.
 //!
 //! [`Editor`] owns a rope of text, a cursor, an undo history and (optionally)
 //! the file the text came from. It knows nothing about the terminal; the
-//! `notopad-tui` crate maps keys onto its methods and draws the result.
+//! `tui` crate maps keys onto its methods and draws the result.
 //!
 //! ```
-//! use notopad_editor::Editor;
+//! use editor::Editor;
 //!
 //! let mut editor = Editor::from_text("hello");
 //! editor.line_end();

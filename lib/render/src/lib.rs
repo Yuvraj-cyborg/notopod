@@ -1,4 +1,4 @@
-//! Renders a notopad [`Document`](notopad_core::Document) to styled terminal
+//! Renders a notopod [`Document`](syntax::Document) to styled terminal
 //! text.
 //!
 //! Output is a list of [`ratatui`] [`Line`](ratatui::text::Line)s, already
@@ -6,9 +6,9 @@
 //! turns them into ANSI escape sequences with [`ansi::to_ansi`].
 //!
 //! ```
-//! use notopad_render::{render_document, Theme};
+//! use render::{render_document, Theme};
 //!
-//! let doc = notopad_core::parse("# Hi\n\nSome **bold** text.\n");
+//! let doc = syntax::parse("# Hi\n\nSome **bold** text.\n");
 //! let lines = render_document(&doc, 40, &Theme::default());
 //! assert_eq!(lines[0].to_string(), "# Hi");
 //! ```

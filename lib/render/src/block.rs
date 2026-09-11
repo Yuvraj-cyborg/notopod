@@ -1,8 +1,8 @@
 //! Block-level rendering.
 
-use notopad_core::{Alignment, Block, BlockKind, Document, Inline, ListItem};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use syntax::{Alignment, Block, BlockKind, Document, Inline, ListItem};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::inline::render_inlines;
@@ -376,7 +376,7 @@ mod tests {
     use super::*;
 
     fn render(src: &str, width: usize) -> Vec<String> {
-        let doc = notopad_core::parse(src);
+        let doc = syntax::parse(src);
         render_document(&doc, width, &Theme::default())
             .iter()
             .map(ToString::to_string)

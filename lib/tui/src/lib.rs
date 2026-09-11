@@ -1,4 +1,4 @@
-//! The notopad terminal user interface.
+//! The notopod terminal user interface.
 //!
 //! One screen: the note, with a status bar underneath. Blocks render as
 //! formatted text except the one the cursor is in, which shows its raw
@@ -14,7 +14,7 @@ use std::io;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use notopad_editor::Editor;
+use editor::Editor;
 use ratatui::crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
 use ratatui::crossterm::execute;
 

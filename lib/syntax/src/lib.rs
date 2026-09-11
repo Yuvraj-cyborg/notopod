@@ -1,4 +1,4 @@
-//! Document model and Markdown parser for notopad.
+//! Document model and Markdown parser for notopod.
 //!
 //! This crate turns Markdown source into a [`Document`]: a list of blocks
 //! (paragraphs, headings, lists, tables, ...) where every block remembers
@@ -9,7 +9,7 @@
 //! as plain text so a note always renders.
 //!
 //! ```
-//! let doc = notopad_core::parse("# Hello\n\nSome *text*.\n");
+//! let doc = syntax::parse("# Hello\n\nSome *text*.\n");
 //! assert_eq!(doc.blocks.len(), 2);
 //! ```
 
