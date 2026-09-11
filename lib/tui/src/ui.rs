@@ -3,7 +3,7 @@
 use std::io::Write;
 
 use ratatui::layout::{Constraint, Layout, Position, Rect};
-use ratatui::text::{Line, Text};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
@@ -11,13 +11,28 @@ use unicode_width::UnicodeWidthStr;
 use crate::app::{App, Mode};
 
 impl App {
-    /// Draws one frame: the note, then the status bar.
+    /// Draws one frame: the tab bar when there is more than one note, the
+    /// note, then the status bar.
     pub(crate) fn draw(&mut self, frame: &mut Frame) {
-        let [body, status] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+        let tab_bar = u16::from(self.tabs().len() > 1);
+        let [tabs, body, status] = Layout::vertical([
+            Constraint::Length(tab_bar),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .areas(frame.area());
         self.body_height = usize::from(body.height);
         self.body_width = usize::from(body.width);
 
+        self.draw_note(frame, body);
+        if tab_bar > 0 {
+            self.draw_tabs(frame, tabs);
+        }
+        self.draw_status(frame, status);
+    }
+
+    /// The note itself, with the cursor placed.
+    fn draw_note(&mut self, frame: &mut Frame, body: Rect) {
         let width = usize::from(body.width).max(1);
         let height = usize::from(body.height);
         let (cursor_row, cursor_x, row_count) = {
@@ -34,16 +49,19 @@ impl App {
             let _ = out.flush();
         }
 
-        if height > 0 {
-            if cursor_row < self.scroll {
-                self.scroll = cursor_row;
+        let scroll = {
+            let scroll = &mut self.tab_mut().scroll;
+            if height > 0 {
+                if cursor_row < *scroll {
+                    *scroll = cursor_row;
+                }
+                if cursor_row >= *scroll + height {
+                    *scroll = cursor_row + 1 - height;
+                }
             }
-            if cursor_row >= self.scroll + height {
-                self.scroll = cursor_row + 1 - height;
-            }
-        }
-        self.scroll = self.scroll.min(row_count.saturating_sub(1));
-        let scroll = self.scroll;
+            *scroll = (*scroll).min(row_count.saturating_sub(1));
+            *scroll
+        };
 
         let lines: Vec<Line<'static>> = self
             .ensure_view(width)
@@ -55,16 +73,15 @@ impl App {
             .collect();
         frame.render_widget(Paragraph::new(Text::from(lines)), body);
 
-        self.draw_status(frame, status);
-
         let cursor_in_status = match &self.mode {
-            Mode::Find { .. } | Mode::SaveAs { .. } => true,
+            Mode::Find { .. } | Mode::SaveAs { .. } | Mode::Open { .. } => true,
             Mode::Canvas(c) => c.is_typing(),
-            Mode::Edit | Mode::ConfirmQuit => false,
+            Mode::Edit | Mode::ConfirmQuit | Mode::ConfirmClose => false,
         };
         if cursor_in_status {
-            let x = self.status_left().width().min(usize::from(status.width));
-            frame.set_cursor_position(Position::new(status.x + x as u16, status.y));
+            let status_y = body.y + body.height;
+            let x = self.status_left().width().min(usize::from(body.width));
+            frame.set_cursor_position(Position::new(body.x + x as u16, status_y));
         } else {
             let y = cursor_row.saturating_sub(scroll);
             if y < height && cursor_x < width {
@@ -74,6 +91,34 @@ impl App {
                 ));
             }
         }
+    }
+
+    /// One row of tab names, the current one in the status bar's colours.
+    fn draw_tabs(&self, frame: &mut Frame, area: Rect) {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        let mut used = 0usize;
+        let width = usize::from(area.width);
+        for (i, tab) in self.tabs().iter().enumerate() {
+            let label = format!(
+                " {}{} ",
+                tab.name(),
+                if tab.editor.is_dirty() { " +" } else { "" }
+            );
+            let w = label.width();
+            if used + w > width {
+                break;
+            }
+            let style = if i == self.active() {
+                self.theme.status_bar
+            } else {
+                self.theme.table_border
+            };
+            spans.push(Span::styled(label, style));
+            used += w;
+        }
+        let rest = width.saturating_sub(used);
+        spans.push(Span::styled("─".repeat(rest), self.theme.table_border));
+        frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
     fn draw_status(&self, frame: &mut Frame, area: Rect) {
@@ -96,12 +141,24 @@ impl App {
         frame.render_widget(Paragraph::new(text).style(self.theme.status_bar), area);
     }
 
-    fn status_left(&self) -> String {
+    pub(crate) fn status_left(&self) -> String {
         match &self.mode {
             Mode::Find { query, .. } => format!(" Find: {query}"),
             Mode::SaveAs { input } => format!(" Save as: {input}"),
+            Mode::Open { input } => format!(" Open: {input}"),
             Mode::ConfirmQuit => {
-                " Unsaved changes. Press Ctrl+Q again to quit without saving, or Esc to go back."
+                let n = self.dirty_count();
+                format!(
+                    " {} unsaved. Press Ctrl+Q again to quit without saving, or Esc to go back.",
+                    if n == 1 {
+                        "This note has changes".to_owned()
+                    } else {
+                        format!("{n} notes have changes")
+                    }
+                )
+            }
+            Mode::ConfirmClose => {
+                " Unsaved changes. Press Ctrl+W again to close without saving, or Esc to go back."
                     .to_owned()
             }
             Mode::Canvas(c) => {
@@ -116,11 +173,11 @@ impl App {
                 if let Some((message, _)) = &self.notice {
                     return format!(" {message}");
                 }
-                let cursor = self.editor.cursor();
+                let cursor = self.editor().cursor();
                 format!(
                     " {}{}   Ln {}, Col {}",
                     self.file_name(),
-                    if self.editor.is_dirty() { " [+]" } else { "" },
+                    if self.editor().is_dirty() { " [+]" } else { "" },
                     cursor.line + 1,
                     cursor.col + 1
                 )
@@ -132,10 +189,11 @@ impl App {
         match &self.mode {
             Mode::Find { .. } => "Enter next   Esc done ".to_owned(),
             Mode::SaveAs { .. } => "Enter save   Esc cancel ".to_owned(),
-            Mode::ConfirmQuit => String::new(),
+            Mode::Open { .. } => "Enter open   Esc cancel ".to_owned(),
+            Mode::ConfirmQuit | Mode::ConfirmClose => String::new(),
             Mode::Canvas(_) => "Esc done ".to_owned(),
             Mode::Edit => format!(
-                "^S save  ^Q quit  ^F find  ^D draw  ^Z undo  ^P preview {} ",
+                "^S save  ^O open  ^Q quit  ^F find  ^D draw  ^Z undo  ^P preview {} ",
                 if self.preview { "on" } else { "off" }
             ),
         }

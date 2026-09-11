@@ -150,6 +150,46 @@ impl Editor {
         self.pos_to_char(self.cursor)
     }
 
+    /// Character index of `pos`, clamped into the buffer.
+    pub fn char_idx(&self, pos: Position) -> usize {
+        self.pos_to_char(pos)
+    }
+
+    /// The position of character `idx`, clamped into the buffer.
+    pub fn position_at(&self, idx: usize) -> Position {
+        self.char_to_pos(idx)
+    }
+
+    /// Number of characters in the whole text.
+    pub fn len_chars(&self) -> usize {
+        self.rope.len_chars()
+    }
+
+    /// The characters in `range`, clamped into the buffer.
+    pub fn slice(&self, range: Range<usize>) -> String {
+        let end = range.end.min(self.rope.len_chars());
+        let start = range.start.min(end);
+        self.rope.slice(start..end).to_string()
+    }
+
+    /// Character range of line `idx` including its line break, so that
+    /// removing it removes the whole line. The last line has no break;
+    /// its range then reaches back to include the break before it, so a
+    /// buffer never ends up with a dangling empty last line.
+    pub fn line_range(&self, idx: usize) -> Range<usize> {
+        let idx = idx.min(self.len_lines() - 1);
+        let start = self.rope.line_to_char(idx);
+        let end = if idx + 1 < self.len_lines() {
+            self.rope.line_to_char(idx + 1)
+        } else {
+            self.rope.len_chars()
+        };
+        if end == self.rope.len_chars() && start > 0 && idx + 1 == self.len_lines() {
+            return start - 1..end;
+        }
+        start..end
+    }
+
     /// Byte index of the cursor in the whole text.
     pub fn cursor_byte_idx(&self) -> usize {
         self.rope.char_to_byte(self.cursor_char_idx())
@@ -347,6 +387,16 @@ impl Editor {
             return;
         }
         self.remove_range(idx..idx + 1, idx);
+    }
+
+    /// Deletes the characters in `range` as one undoable edit, leaves the
+    /// cursor at its start, and returns the text that was removed.
+    pub fn delete_range(&mut self, range: Range<usize>) -> String {
+        let end = range.end.min(self.rope.len_chars());
+        let start = range.start.min(end);
+        let removed = self.rope.slice(start..end).to_string();
+        self.remove_range(start..end, start);
+        removed
     }
 
     /// Replaces the lines `first..end` with `text`, as one undoable edit.

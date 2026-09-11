@@ -1,5 +1,6 @@
 //! Application state and key handling.
 
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -36,27 +37,69 @@ pub(crate) enum Mode {
         /// The name so far.
         input: String,
     },
+    /// Typing the name of a note to open in a new tab.
+    Open {
+        /// The name so far.
+        input: String,
+    },
     /// Asked to quit with unsaved changes.
     ConfirmQuit,
+    /// Asked to close a tab with unsaved changes.
+    ConfirmClose,
     /// Drawing inside a ```` ```draw ```` block.
     Canvas(CanvasState),
 }
 
-/// The editor screen.
-pub struct App {
+/// One open note: its buffer plus what is cached about it.
+pub(crate) struct Tab {
     pub(crate) editor: Editor,
-    pub(crate) theme: Theme,
-    pub(crate) graphics: Graphics,
-    pub(crate) preview: bool,
-    pub(crate) mode: Mode,
     pub(crate) scroll: usize,
-    pub(crate) notice: Option<(String, Instant)>,
-    pub(crate) body_height: usize,
-    pub(crate) body_width: usize,
     parsed: Parsed,
     view: Option<CachedView>,
     /// Screen column to aim for when moving up/down.
     sticky_x: Option<usize>,
+}
+
+impl Tab {
+    fn new(editor: Editor) -> Self {
+        Self {
+            editor,
+            scroll: 0,
+            parsed: Parsed::empty(),
+            view: None,
+            sticky_x: None,
+        }
+    }
+
+    /// Drops everything that can be rebuilt from the text: the parse and
+    /// the rendered rows. A tab that is not on screen keeps only its
+    /// rope, so a dozen open notes cost a dozen buffers, not a dozen
+    /// render caches.
+    fn sleep(&mut self) {
+        self.parsed = Parsed::empty();
+        self.view = None;
+    }
+
+    /// The tab's name for the tab bar and the status bar.
+    pub(crate) fn name(&self) -> String {
+        self.editor.path().and_then(|p| p.file_name()).map_or_else(
+            || "untitled".to_owned(),
+            |n| n.to_string_lossy().into_owned(),
+        )
+    }
+}
+
+/// The editor screen.
+pub struct App {
+    tabs: Vec<Tab>,
+    active: usize,
+    pub(crate) theme: Theme,
+    pub(crate) graphics: Graphics,
+    pub(crate) preview: bool,
+    pub(crate) mode: Mode,
+    pub(crate) notice: Option<(String, Instant)>,
+    pub(crate) body_height: usize,
+    pub(crate) body_width: usize,
     last_query: String,
     quit: bool,
 }
@@ -65,6 +108,16 @@ struct Parsed {
     version: u64,
     doc: Document,
     index: LineIndex,
+}
+
+impl Parsed {
+    fn empty() -> Self {
+        Self {
+            version: u64::MAX,
+            doc: Document::default(),
+            index: LineIndex::new(""),
+        }
+    }
 }
 
 struct CachedView {
@@ -78,22 +131,15 @@ impl App {
     /// come out as braille until [`App::with_graphics`] says otherwise.
     pub fn new(editor: Editor, theme: Theme) -> Self {
         Self {
-            editor,
+            tabs: vec![Tab::new(editor)],
+            active: 0,
             theme,
             graphics: Graphics::braille(),
             preview: true,
             mode: Mode::Edit,
-            scroll: 0,
             notice: None,
             body_height: 0,
             body_width: 80,
-            parsed: Parsed {
-                version: u64::MAX,
-                doc: Document::default(),
-                index: LineIndex::new(""),
-            },
-            view: None,
-            sticky_x: None,
             last_query: String::new(),
             quit: false,
         }
@@ -138,29 +184,157 @@ impl App {
         }
     }
 
+    // ----- tabs -----
+
+    /// The note being edited.
+    pub fn editor(&self) -> &Editor {
+        &self.tabs[self.active].editor
+    }
+
+    /// The note being edited, for changing it.
+    pub fn editor_mut(&mut self) -> &mut Editor {
+        &mut self.tabs[self.active].editor
+    }
+
+    pub(crate) fn tab(&self) -> &Tab {
+        &self.tabs[self.active]
+    }
+
+    pub(crate) fn tab_mut(&mut self) -> &mut Tab {
+        &mut self.tabs[self.active]
+    }
+
+    /// Every open note, in tab order.
+    pub(crate) fn tabs(&self) -> &[Tab] {
+        &self.tabs
+    }
+
+    /// Index of the tab on screen.
+    pub(crate) fn active(&self) -> usize {
+        self.active
+    }
+
+    /// Opens `path` in a new tab, or switches to it if it is already open.
+    /// A file that does not exist yet is an empty note that will be
+    /// created on save. Returns whether the note is now on screen.
+    pub fn open_path(&mut self, path: &Path) -> bool {
+        if let Some(i) = self
+            .tabs
+            .iter()
+            .position(|t| t.editor.path().is_some_and(|p| same_file(p, path)))
+        {
+            self.switch_tab(i);
+            return true;
+        }
+        match Editor::open(path) {
+            Ok(editor) => {
+                self.add_tab(editor);
+                true
+            }
+            Err(e) => {
+                self.notify(format!("Cannot open {}: {e}", path.display()));
+                false
+            }
+        }
+    }
+
+    /// Opens an empty, unnamed note in a new tab.
+    pub fn new_tab(&mut self) {
+        self.add_tab(Editor::new());
+    }
+
+    fn add_tab(&mut self, editor: Editor) {
+        // An untouched empty first tab is just the screen waiting for a
+        // note; the opened one takes its place rather than sitting beside it.
+        let placeholder = self.tabs.len() == 1
+            && self.tabs[0].editor.path().is_none()
+            && !self.tabs[0].editor.is_dirty()
+            && self.tabs[0].editor.len_chars() == 0;
+        self.leave_tab();
+        if placeholder {
+            self.tabs[0] = Tab::new(editor);
+        } else {
+            self.tabs.push(Tab::new(editor));
+            self.active = self.tabs.len() - 1;
+        }
+    }
+
+    /// Shows tab `index`.
+    pub fn switch_tab(&mut self, index: usize) {
+        if index >= self.tabs.len() || index == self.active {
+            return;
+        }
+        self.leave_tab();
+        self.active = index;
+    }
+
+    fn next_tab(&mut self) {
+        self.switch_tab((self.active + 1) % self.tabs.len());
+    }
+
+    fn prev_tab(&mut self) {
+        self.switch_tab((self.active + self.tabs.len() - 1) % self.tabs.len());
+    }
+
+    /// Puts the current tab to sleep and drops whatever the keyboard was
+    /// doing in it: a drawing in progress is finished, a prompt cancelled.
+    fn leave_tab(&mut self) {
+        if matches!(self.mode, Mode::Canvas(_)) {
+            self.exit_canvas();
+        }
+        self.mode = Mode::Edit;
+        self.tabs[self.active].sleep();
+    }
+
+    /// Ctrl+W: closes the current tab, asking first if it has unsaved
+    /// changes. The last tab is not closed but emptied.
+    fn request_close_tab(&mut self) {
+        if self.editor().is_dirty() {
+            self.mode = Mode::ConfirmClose;
+        } else {
+            self.close_tab();
+        }
+    }
+
+    fn close_tab(&mut self) {
+        if matches!(self.mode, Mode::Canvas(_)) {
+            self.exit_canvas();
+        }
+        self.mode = Mode::Edit;
+        if self.tabs.len() == 1 {
+            if self.editor().path().is_none() && self.editor().len_chars() == 0 {
+                self.notify("Nothing to close");
+            } else {
+                self.tabs[0] = Tab::new(Editor::new());
+            }
+            return;
+        }
+        self.tabs.remove(self.active);
+        self.active = self.active.min(self.tabs.len() - 1);
+    }
+
     /// The parsed document for the current buffer, re-parsed only when the
     /// text changed.
     pub(crate) fn ensure_view(&mut self, width: usize) -> &View {
-        if self.parsed.version != self.editor.version() {
-            let text = self.editor.text();
-            self.parsed = Parsed {
-                version: self.editor.version(),
-                doc: syntax::parse(&text),
-                index: LineIndex::new(&text),
-            };
-        }
         let canvas_gen = match &self.mode {
             Mode::Canvas(c) => Some(c.generation),
             _ => None,
         };
-        let key = (
-            self.editor.version(),
-            self.editor.cursor(),
-            width,
-            self.preview,
-            canvas_gen,
-        );
-        if self.view.as_ref().is_none_or(|v| v.key != key) {
+        let key = {
+            let editor = &self.tabs[self.active].editor;
+            (
+                editor.version(),
+                editor.cursor(),
+                width,
+                self.preview,
+                canvas_gen,
+            )
+        };
+        let stale = self.tabs[self.active]
+            .view
+            .as_ref()
+            .is_none_or(|v| v.key != key);
+        if stale {
             let rendered = self.canvas_lines(width);
             let override_block = match (&self.mode, &rendered) {
                 (Mode::Canvas(c), Some((last, lines))) => Some(Override {
@@ -171,19 +345,32 @@ impl App {
                 }),
                 _ => None,
             };
+            let tab = &mut self.tabs[self.active];
+            if tab.parsed.version != tab.editor.version() {
+                let text = tab.editor.text();
+                tab.parsed = Parsed {
+                    version: tab.editor.version(),
+                    doc: syntax::parse(&text),
+                    index: LineIndex::new(&text),
+                };
+            }
             let view = view::build(
-                &self.editor,
-                &self.parsed.doc,
-                &self.parsed.index,
+                &tab.editor,
+                &tab.parsed.doc,
+                &tab.parsed.index,
                 width,
                 self.preview,
                 &self.theme,
                 override_block.as_ref(),
                 &mut self.graphics,
             );
-            self.view = Some(CachedView { key, view });
+            tab.view = Some(CachedView { key, view });
         }
-        &self.view.as_ref().expect("view was just built").view
+        &self.tabs[self.active]
+            .view
+            .as_ref()
+            .expect("view was just built")
+            .view
     }
 
     /// In canvas mode: the block's closing fence line and its rendered
@@ -192,7 +379,7 @@ impl App {
         let Mode::Canvas(c) = &self.mode else {
             return None;
         };
-        let (_, end) = canvas_mode::body_range(&self.editor, c.fence)?;
+        let (_, end) = canvas_mode::body_range(self.editor(), c.fence)?;
         let preview = c.preview();
         let overlay = canvas::Overlay {
             cursor: Some(c.cursor),
@@ -228,8 +415,9 @@ impl App {
         match self.mode {
             Mode::Edit => self.handle_edit_key(key),
             Mode::ConfirmQuit => self.handle_confirm_quit_key(key),
+            Mode::ConfirmClose => self.handle_confirm_close_key(key),
             Mode::Find { .. } => self.handle_find_key(key),
-            Mode::SaveAs { .. } => self.handle_save_as_key(key),
+            Mode::SaveAs { .. } | Mode::Open { .. } => self.handle_prompt_key(key),
             Mode::Canvas(_) => self.handle_canvas_key(key),
         }
     }
@@ -237,22 +425,51 @@ impl App {
     /// Handles pasted text.
     pub fn handle_paste(&mut self, text: &str) {
         match &mut self.mode {
-            Mode::Edit => self.editor.insert_str(text),
+            Mode::Edit => self.editor_mut().insert_str(text),
             Mode::Find { query, .. } => {
                 query.push_str(text.lines().next().unwrap_or_default());
                 self.search_from_origin();
             }
-            Mode::SaveAs { input } => input.push_str(text.lines().next().unwrap_or_default()),
+            Mode::SaveAs { input } | Mode::Open { input } => {
+                input.push_str(text.lines().next().unwrap_or_default());
+            }
             Mode::Canvas(c) => {
                 if let Tool::Text { input, .. } = &mut c.tool {
                     input.push_str(text.lines().next().unwrap_or_default());
                 }
             }
-            Mode::ConfirmQuit => {}
+            Mode::ConfirmQuit | Mode::ConfirmClose => {}
         }
     }
 
+    /// Keys that mean the same thing whatever is being edited: tabs, files,
+    /// quitting. Returns `true` when the key was one of them.
+    pub(crate) fn handle_global_key(&mut self, key: KeyEvent) -> bool {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        if !ctrl {
+            return false;
+        }
+        match key.code {
+            KeyCode::Char('q') => self.request_quit(),
+            KeyCode::Char('o') => {
+                self.mode = Mode::Open {
+                    input: String::new(),
+                };
+            }
+            KeyCode::Char('t') => self.new_tab(),
+            KeyCode::Char('w') => self.request_close_tab(),
+            KeyCode::PageDown | KeyCode::Tab if !shift => self.next_tab(),
+            KeyCode::PageUp | KeyCode::BackTab | KeyCode::Tab => self.prev_tab(),
+            _ => return false,
+        }
+        true
+    }
+
     fn handle_edit_key(&mut self, key: KeyEvent) {
+        if self.handle_global_key(key) {
+            return;
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
@@ -260,7 +477,6 @@ impl App {
         let mut vertical = false;
 
         match (key.code, ctrl, alt) {
-            (KeyCode::Char('q'), true, _) => self.request_quit(),
             (KeyCode::Char('s'), true, _) => self.save(),
             (KeyCode::Char('z' | 'Z'), true, _) if shift => self.redo(),
             (KeyCode::Char('z'), true, _) => self.undo(),
@@ -276,15 +492,17 @@ impl App {
             (KeyCode::Char('f'), true, _) => self.start_find(),
             (KeyCode::Char('g'), true, _) => self.find_next(),
             (KeyCode::Char('d'), true, _) => self.enter_canvas(),
-            (KeyCode::Left, true, _) | (KeyCode::Left, _, true) => self.editor.word_left(),
-            (KeyCode::Right, true, _) | (KeyCode::Right, _, true) => self.editor.word_right(),
-            (KeyCode::Home, true, _) => self.editor.doc_start(),
-            (KeyCode::End, true, _) => self.editor.doc_end(),
-            (KeyCode::Char('a'), true, _) | (KeyCode::Home, ..) => self.editor.line_start(),
-            (KeyCode::Char('e'), true, _) | (KeyCode::End, ..) => self.editor.line_end(),
+            (KeyCode::Left, true, _) | (KeyCode::Left, _, true) => self.editor_mut().word_left(),
+            (KeyCode::Right, true, _) | (KeyCode::Right, _, true) => {
+                self.editor_mut().word_right();
+            }
+            (KeyCode::Home, true, _) => self.editor_mut().doc_start(),
+            (KeyCode::End, true, _) => self.editor_mut().doc_end(),
+            (KeyCode::Char('a'), true, _) | (KeyCode::Home, ..) => self.editor_mut().line_start(),
+            (KeyCode::Char('e'), true, _) | (KeyCode::End, ..) => self.editor_mut().line_end(),
 
-            (KeyCode::Left, ..) => self.editor.move_left(),
-            (KeyCode::Right, ..) => self.editor.move_right(),
+            (KeyCode::Left, ..) => self.editor_mut().move_left(),
+            (KeyCode::Right, ..) => self.editor_mut().move_right(),
             (KeyCode::Up, ..) => {
                 vertical = true;
                 self.move_visual(-1);
@@ -301,18 +519,18 @@ impl App {
                 vertical = true;
                 self.move_visual(page as isize);
             }
-            (KeyCode::Enter, ..) => self.editor.insert_newline(),
-            (KeyCode::Backspace, ..) => self.editor.backspace(),
-            (KeyCode::Delete, ..) => self.editor.delete_forward(),
-            (KeyCode::Tab, ..) => self.editor.insert_str("  "),
-            (KeyCode::BackTab, ..) => self.editor.dedent_line(),
+            (KeyCode::Enter, ..) => self.editor_mut().insert_newline(),
+            (KeyCode::Backspace, ..) => self.editor_mut().backspace(),
+            (KeyCode::Delete, ..) => self.editor_mut().delete_forward(),
+            (KeyCode::Tab, ..) => self.editor_mut().insert_str("  "),
+            (KeyCode::BackTab, ..) => self.editor_mut().dedent_line(),
             (KeyCode::Esc, ..) => self.notice = None,
-            (KeyCode::Char(c), false, false) => self.editor.insert_char(c),
+            (KeyCode::Char(c), false, false) => self.editor_mut().insert_char(c),
             _ => {}
         }
 
         if !vertical {
-            self.sticky_x = None;
+            self.tab_mut().sticky_x = None;
         }
     }
 
@@ -324,6 +542,18 @@ impl App {
             _ => {
                 self.mode = Mode::Edit;
                 self.notify("Quit cancelled");
+            }
+        }
+    }
+
+    fn handle_confirm_close_key(&mut self, key: KeyEvent) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Char('w') if ctrl => self.close_tab(),
+            KeyCode::Char('y' | 'Y') => self.close_tab(),
+            _ => {
+                self.mode = Mode::Edit;
+                self.notify("Close cancelled");
             }
         }
     }
@@ -359,31 +589,38 @@ impl App {
         }
     }
 
-    fn handle_save_as_key(&mut self, key: KeyEvent) {
+    /// Save-as and open share one line editor in the status bar.
+    fn handle_prompt_key(&mut self, key: KeyEvent) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match (key.code, ctrl) {
             (KeyCode::Esc, _) => self.mode = Mode::Edit,
             (KeyCode::Enter, _) => {
-                let Mode::SaveAs { input } = &self.mode else {
-                    return;
+                let input = match &self.mode {
+                    Mode::SaveAs { input } | Mode::Open { input } => input.trim().to_owned(),
+                    _ => return,
                 };
-                let name = input.trim().to_owned();
-                if name.is_empty() {
+                if input.is_empty() {
                     return;
                 }
+                let opening = matches!(self.mode, Mode::Open { .. });
                 self.mode = Mode::Edit;
-                match self.editor.save_as(&name) {
-                    Ok(()) => self.notify(format!("Saved {name}")),
-                    Err(e) => self.notify(format!("Could not save {name}: {e}")),
+                if opening {
+                    let path = self.resolve_note(&input);
+                    self.open_path(&path);
+                } else {
+                    match self.editor_mut().save_as(&input) {
+                        Ok(()) => self.notify(format!("Saved {input}")),
+                        Err(e) => self.notify(format!("Could not save {input}: {e}")),
+                    }
                 }
             }
             (KeyCode::Backspace, _) => {
-                if let Mode::SaveAs { input } = &mut self.mode {
+                if let Mode::SaveAs { input } | Mode::Open { input } = &mut self.mode {
                     input.pop();
                 }
             }
             (KeyCode::Char(c), false) => {
-                if let Mode::SaveAs { input } = &mut self.mode {
+                if let Mode::SaveAs { input } | Mode::Open { input } = &mut self.mode {
                     input.push(c);
                 }
             }
@@ -391,30 +628,51 @@ impl App {
         }
     }
 
+    /// Where a name typed at the open prompt points: as given if it exists
+    /// or is a path, otherwise next to the current note, with `.md` added
+    /// when it has no extension.
+    pub(crate) fn resolve_note(&self, name: &str) -> PathBuf {
+        let given = PathBuf::from(name);
+        if given.exists() {
+            return given;
+        }
+        let file = with_md(given);
+        if file.exists() || file.is_absolute() || name.contains(['/', '\\']) {
+            return file;
+        }
+        match self.editor().path().and_then(Path::parent) {
+            Some(dir) if !dir.as_os_str().is_empty() => dir.join(file),
+            _ => file,
+        }
+    }
+
     // ----- canvas mode -----
 
     /// Ctrl+D: draw in the block under the cursor, or start a new one.
-    fn enter_canvas(&mut self) {
+    pub(crate) fn enter_canvas(&mut self) {
         let width = self.body_width.max(1);
         self.ensure_view(width);
-        let line = self.editor.cursor().line;
-        let existing = canvas_mode::block_at(&self.parsed.doc, &self.parsed.index, line);
+        let line = self.editor().cursor().line;
+        let existing = {
+            let tab = &self.tabs[self.active];
+            canvas_mode::block_at(&tab.parsed.doc, &tab.parsed.index, line)
+        };
         let fence = match existing {
             Some((fence, _)) => fence,
-            None => canvas_mode::insert_block(&mut self.editor),
+            None => canvas_mode::insert_block(self.editor_mut()),
         };
-        if canvas_mode::ensure_closed(&mut self.editor, fence).is_none() {
+        if canvas_mode::ensure_closed(self.editor_mut(), fence).is_none() {
             self.notify("Not a draw block");
             return;
         }
-        let Some(drawing) = canvas_mode::read(&self.editor, fence) else {
+        let Some(drawing) = canvas_mode::read(self.editor(), fence) else {
             self.notify("Not a draw block");
             return;
         };
         let cursor = drawing
             .bounds()
             .map_or(canvas::Point::new(2, 1), |b| canvas::Point::new(b.x, b.y));
-        self.editor.set_cursor(Position::new(fence, 0));
+        self.editor_mut().set_cursor(Position::new(fence, 0));
         self.mode = Mode::Canvas(CanvasState {
             fence,
             drawing,
@@ -434,9 +692,9 @@ impl App {
             return;
         };
         let after =
-            canvas_mode::body_range(&self.editor, c.fence).map_or(c.fence, |(_, end)| end + 1);
+            canvas_mode::body_range(self.editor(), c.fence).map_or(c.fence, |(_, end)| end + 1);
         self.mode = Mode::Edit;
-        self.editor.set_cursor(Position::new(after, 0));
+        self.editor_mut().set_cursor(Position::new(after, 0));
     }
 
     /// Writes the canvas drawing into the buffer.
@@ -445,7 +703,7 @@ impl App {
             return;
         };
         let (fence, drawing) = (c.fence, c.drawing.clone());
-        if !canvas_mode::write(&mut self.editor, fence, &drawing) {
+        if !canvas_mode::write(self.editor_mut(), fence, &drawing) {
             self.notify("The draw block is gone");
             self.mode = Mode::Edit;
         }
@@ -454,10 +712,15 @@ impl App {
     /// Re-reads the drawing from the buffer (after undo/redo or a
     /// cancelled move). Leaves canvas mode if the block disappeared.
     fn canvas_reload(&mut self) {
+        let fence = match &self.mode {
+            Mode::Canvas(c) => c.fence,
+            _ => return,
+        };
+        let drawing = canvas_mode::read(self.editor(), fence);
         let Mode::Canvas(c) = &mut self.mode else {
             return;
         };
-        if let Some(drawing) = canvas_mode::read(&self.editor, c.fence) {
+        if let Some(drawing) = drawing {
             c.drawing = drawing;
             c.generation = c.generation.wrapping_add(1);
         } else {
@@ -466,7 +729,40 @@ impl App {
         }
     }
 
+    /// Typing a label in canvas mode: the status bar has the keyboard.
+    fn handle_label_key(&mut self, key: KeyEvent) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let Mode::Canvas(c) = &mut self.mode else {
+            return;
+        };
+        let Tool::Text { input, .. } = &mut c.tool else {
+            return;
+        };
+        match key.code {
+            KeyCode::Esc => {
+                c.cancel();
+            }
+            KeyCode::Enter => {
+                if c.commit() {
+                    self.canvas_write_back();
+                }
+            }
+            KeyCode::Backspace => {
+                input.pop();
+            }
+            KeyCode::Char(ch) if !ctrl => input.push(ch),
+            _ => {}
+        }
+    }
+
     fn handle_canvas_key(&mut self, key: KeyEvent) {
+        if matches!(&self.mode, Mode::Canvas(c) if c.is_typing()) {
+            self.handle_label_key(key);
+            return;
+        }
+        if self.handle_global_key(key) {
+            return;
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let max_x = self.body_width.saturating_sub(2) as i32;
@@ -474,38 +770,17 @@ impl App {
             return;
         };
 
-        // Typing a label: the status bar has the keyboard.
-        if let Tool::Text { input, .. } = &mut c.tool {
-            match key.code {
-                KeyCode::Esc => {
-                    c.cancel();
-                }
-                KeyCode::Enter => {
-                    if c.commit() {
-                        self.canvas_write_back();
-                    }
-                }
-                KeyCode::Backspace => {
-                    input.pop();
-                }
-                KeyCode::Char(ch) if !ctrl => input.push(ch),
-                _ => {}
-            }
-            return;
-        }
-
         let step = if shift { 5 } else { 1 };
         match (key.code, ctrl) {
-            (KeyCode::Char('q'), true) => self.request_quit(),
             (KeyCode::Char('s'), true) => self.save(),
             (KeyCode::Char('z'), true) => {
-                if !self.editor.undo() {
+                if !self.editor_mut().undo() {
                     self.notify("Nothing to undo");
                 }
                 self.canvas_reload();
             }
             (KeyCode::Char('y'), true) => {
-                if !self.editor.redo() {
+                if !self.editor_mut().redo() {
                     self.notify("Nothing to redo");
                 }
                 self.canvas_reload();
@@ -574,22 +849,27 @@ impl App {
 
     // ----- actions -----
 
-    fn request_quit(&mut self) {
-        if self.editor.is_dirty() {
+    pub(crate) fn request_quit(&mut self) {
+        if self.tabs.iter().any(|t| t.editor.is_dirty()) {
             self.mode = Mode::ConfirmQuit;
         } else {
             self.quit = true;
         }
     }
 
-    fn save(&mut self) {
-        if self.editor.path().is_none() {
+    /// Number of tabs with unsaved changes.
+    pub(crate) fn dirty_count(&self) -> usize {
+        self.tabs.iter().filter(|t| t.editor.is_dirty()).count()
+    }
+
+    pub(crate) fn save(&mut self) {
+        if self.editor().path().is_none() {
             self.mode = Mode::SaveAs {
                 input: String::new(),
             };
             return;
         }
-        match self.editor.save() {
+        match self.editor_mut().save() {
             Ok(()) => {
                 let name = self.file_name();
                 self.notify(format!("Saved {name}"));
@@ -598,22 +878,22 @@ impl App {
         }
     }
 
-    fn undo(&mut self) {
-        if !self.editor.undo() {
+    pub(crate) fn undo(&mut self) {
+        if !self.editor_mut().undo() {
             self.notify("Nothing to undo");
         }
     }
 
-    fn redo(&mut self) {
-        if !self.editor.redo() {
+    pub(crate) fn redo(&mut self) {
+        if !self.editor_mut().redo() {
             self.notify("Nothing to redo");
         }
     }
 
-    fn start_find(&mut self) {
+    pub(crate) fn start_find(&mut self) {
         self.mode = Mode::Find {
             query: String::new(),
-            origin: self.editor.cursor(),
+            origin: self.editor().cursor(),
         };
     }
 
@@ -625,19 +905,19 @@ impl App {
         };
         let (query, origin) = (query.clone(), *origin);
         if query.is_empty() {
-            self.editor.set_cursor(origin);
+            self.editor_mut().set_cursor(origin);
             return;
         }
-        let from = self.char_idx_of(origin);
-        if let Some(pos) = self.editor.find(&query, from) {
-            self.editor.set_cursor(pos);
+        let from = self.editor().char_idx(origin);
+        if let Some(pos) = self.editor().find(&query, from) {
+            self.editor_mut().set_cursor(pos);
         } else {
-            self.editor.set_cursor(origin);
+            self.editor_mut().set_cursor(origin);
             self.notify(format!("No match for \"{query}\""));
         }
     }
 
-    fn find_next(&mut self) {
+    pub(crate) fn find_next(&mut self) {
         let query = match &self.mode {
             Mode::Find { query, .. } if !query.is_empty() => query.clone(),
             _ => self.last_query.clone(),
@@ -646,20 +926,20 @@ impl App {
             self.notify("Nothing to search for (Ctrl+F to start)");
             return;
         }
-        let from = self.editor.cursor_char_idx() + 1;
-        match self.editor.find(&query, from) {
-            Some(pos) => self.editor.set_cursor(pos),
+        let from = self.editor().cursor_char_idx() + 1;
+        match self.editor().find(&query, from) {
+            Some(pos) => self.editor_mut().set_cursor(pos),
             None => self.notify(format!("No match for \"{query}\"")),
         }
     }
 
     /// Moves the cursor `delta` screen rows, through wrapped lines and
     /// rendered blocks alike.
-    fn move_visual(&mut self, delta: isize) {
+    pub(crate) fn move_visual(&mut self, delta: isize) {
         let width = self.body_width.max(1);
         let (row, x) = self.ensure_view(width).cursor;
-        let x = self.sticky_x.unwrap_or(x);
-        self.sticky_x = Some(x);
+        let x = self.tab().sticky_x.unwrap_or(x);
+        self.tab_mut().sticky_x = Some(x);
 
         let view = self.ensure_view(width);
         let last = view.rows.len().saturating_sub(1);
@@ -668,9 +948,9 @@ impl App {
             // Already at the edge: fall back to plain line movement so Down
             // on the last row of a wrapped line still leaves it.
             if delta < 0 {
-                self.editor.move_up();
+                self.editor_mut().move_up();
             } else {
-                self.editor.move_down();
+                self.editor_mut().move_down();
             }
             return;
         }
@@ -681,53 +961,63 @@ impl App {
                 start_col,
                 end_col,
             } => {
-                let text = self.editor.line(line);
+                let text = self.editor().line(line);
                 let col = view::col_at_x(&text, start_col, x).min(end_col);
                 Position::new(line, col)
             }
             Source::Rendered { first, last } => {
                 let line = if delta < 0 { last } else { first };
-                let text = self.editor.line(line);
+                let text = self.editor().line(line);
                 Position::new(line, view::col_at_x(&text, 0, x))
             }
         };
-        self.editor.set_cursor(pos);
+        self.editor_mut().set_cursor(pos);
     }
 
     // ----- helpers -----
 
     pub(crate) fn file_name(&self) -> String {
-        self.editor.path().and_then(|p| p.file_name()).map_or_else(
-            || "untitled".to_owned(),
-            |n| n.to_string_lossy().into_owned(),
-        )
+        self.tab().name()
     }
+}
 
-    fn char_idx_of(&self, pos: Position) -> usize {
-        (0..pos.line.min(self.editor.len_lines()))
-            .map(|l| self.editor.line_len(l) + 1)
-            .sum::<usize>()
-            + pos.col
+/// `path` with `.md` added when it has no extension.
+pub(crate) fn with_md(mut path: PathBuf) -> PathBuf {
+    if path.extension().is_none() {
+        path.set_extension("md");
+    }
+    path
+}
+
+/// Whether two paths name the same file, seen through symlinks and
+/// relative prefixes where the files exist.
+pub(crate) fn same_file(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn app(text: &str) -> App {
+    pub(crate) fn app(text: &str) -> App {
         App::new(Editor::from_text(text), Theme::default())
     }
 
-    fn key(app: &mut App, code: KeyCode) {
+    pub(crate) fn key(app: &mut App, code: KeyCode) {
         app.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
     }
 
-    fn ctrl(app: &mut App, ch: char) {
+    pub(crate) fn ctrl(app: &mut App, ch: char) {
         app.handle_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::CONTROL));
     }
 
-    fn type_str(app: &mut App, s: &str) {
+    pub(crate) fn type_str(app: &mut App, s: &str) {
         for ch in s.chars() {
             key(app, KeyCode::Char(ch));
         }
@@ -736,10 +1026,10 @@ mod tests {
     #[test]
     fn ctrl_d_creates_a_block_and_draws_a_labelled_rect() {
         let mut a = app("# Notes\n");
-        a.editor.set_cursor(Position::new(1, 0));
+        a.editor_mut().set_cursor(Position::new(1, 0));
         ctrl(&mut a, 'd');
         assert!(matches!(a.mode, Mode::Canvas(_)));
-        assert!(a.editor.text().contains("```draw\n```"));
+        assert!(a.editor().text().contains("```draw\n```"));
 
         // Rectangle from (2,1) to (9,3), then label it.
         key(&mut a, KeyCode::Char('r'));
@@ -750,48 +1040,48 @@ mod tests {
         key(&mut a, KeyCode::Down);
         key(&mut a, KeyCode::Enter);
         assert!(
-            a.editor.text().contains("rect 2,1 8x3\n"),
+            a.editor().text().contains("rect 2,1 8x3\n"),
             "{}",
-            a.editor.text()
+            a.editor().text()
         );
 
         key(&mut a, KeyCode::Char('t'));
         type_str(&mut a, "Parser");
         key(&mut a, KeyCode::Enter);
-        assert!(a.editor.text().contains("rect 2,1 8x3 \"Parser\"\n"));
+        assert!(a.editor().text().contains("rect 2,1 8x3 \"Parser\"\n"));
 
         // Fill, colour, then an arrow out of the box.
         key(&mut a, KeyCode::Char('f'));
         key(&mut a, KeyCode::Char('c'));
-        assert!(a.editor.text().contains("\"Parser\" fill color=red\n"));
+        assert!(a.editor().text().contains("\"Parser\" fill color=red\n"));
         key(&mut a, KeyCode::Char('a'));
         for _ in 0..12 {
             key(&mut a, KeyCode::Right);
         }
         key(&mut a, KeyCode::Enter);
         assert!(
-            a.editor.text().contains("line 9,3 -> 21,3\n"),
+            a.editor().text().contains("line 9,3 -> 21,3\n"),
             "{}",
-            a.editor.text()
+            a.editor().text()
         );
 
         // Esc leaves canvas mode with the cursor after the block.
         key(&mut a, KeyCode::Esc);
         assert_eq!(a.mode, Mode::Edit);
-        let after = a.editor.cursor().line;
-        assert!(a.editor.line(after - 1).starts_with("```"));
+        let after = a.editor().cursor().line;
+        assert!(a.editor().line(after - 1).starts_with("```"));
 
         // Every canvas action was one undo step.
         ctrl(&mut a, 'z');
-        assert!(!a.editor.text().contains("line 9,3"));
+        assert!(!a.editor().text().contains("line 9,3"));
         ctrl(&mut a, 'z');
-        assert!(!a.editor.text().contains("color=red"));
+        assert!(!a.editor().text().contains("color=red"));
     }
 
     #[test]
     fn ctrl_d_on_an_existing_block_edits_it() {
         let mut a = app("```draw\nrect 0,0 4x2\n```\n\n");
-        a.editor.set_cursor(Position::new(1, 3));
+        a.editor_mut().set_cursor(Position::new(1, 3));
         ctrl(&mut a, 'd');
         let Mode::Canvas(c) = &a.mode else {
             panic!("not in canvas mode");
@@ -806,11 +1096,11 @@ mod tests {
         key(&mut a, KeyCode::Right);
         key(&mut a, KeyCode::Down);
         key(&mut a, KeyCode::Enter);
-        assert_eq!(a.editor.text(), "```draw\nrect 2,1 4x2\n```\n\n");
+        assert_eq!(a.editor().text(), "```draw\nrect 2,1 4x2\n```\n\n");
         key(&mut a, KeyCode::Char('x'));
-        assert_eq!(a.editor.text(), "```draw\n```\n\n");
+        assert_eq!(a.editor().text(), "```draw\n```\n\n");
         ctrl(&mut a, 'z');
-        assert_eq!(a.editor.text(), "```draw\nrect 2,1 4x2\n```\n\n");
+        assert_eq!(a.editor().text(), "```draw\nrect 2,1 4x2\n```\n\n");
         assert!(matches!(&a.mode, Mode::Canvas(c) if c.drawing.shapes.len() == 1));
     }
 
@@ -822,7 +1112,7 @@ mod tests {
         key(&mut a, KeyCode::Right);
         key(&mut a, KeyCode::Esc);
         assert!(matches!(&a.mode, Mode::Canvas(c) if c.tool == Tool::Select));
-        assert_eq!(a.editor.text(), "```draw\nrect 0,0 4x2\n```\n");
+        assert_eq!(a.editor().text(), "```draw\nrect 0,0 4x2\n```\n");
         key(&mut a, KeyCode::Char('r'));
         key(&mut a, KeyCode::Esc);
         assert!(matches!(&a.mode, Mode::Canvas(_)));
@@ -842,5 +1132,94 @@ mod tests {
         );
         assert!(texts.iter().any(|t| t.contains("hi")));
         assert_eq!(view.cursor, (0, 0));
+    }
+
+    #[test]
+    fn tabs_open_switch_and_close() {
+        let mut a = app("first\n");
+        assert_eq!(a.tabs().len(), 1);
+
+        // Ctrl+T adds an empty tab and shows it.
+        ctrl(&mut a, 't');
+        assert_eq!(a.tabs().len(), 2);
+        assert_eq!(a.active(), 1);
+        assert_eq!(a.editor().text(), "");
+        type_str(&mut a, "second");
+
+        // Ctrl+PageUp goes back; the first tab is untouched.
+        a.handle_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::CONTROL));
+        assert_eq!(a.active(), 0);
+        assert_eq!(a.editor().text(), "first\n");
+        a.handle_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::CONTROL));
+        assert_eq!(a.active(), 1);
+
+        // Closing a dirty tab asks first; `y` closes it.
+        ctrl(&mut a, 'w');
+        assert_eq!(a.mode, Mode::ConfirmClose);
+        key(&mut a, KeyCode::Char('n'));
+        assert_eq!(a.mode, Mode::Edit);
+        assert_eq!(a.tabs().len(), 2);
+        ctrl(&mut a, 'w');
+        key(&mut a, KeyCode::Char('y'));
+        assert_eq!(a.tabs().len(), 1);
+        assert_eq!(a.editor().text(), "first\n");
+
+        // The last tab is emptied rather than closed.
+        ctrl(&mut a, 'w');
+        assert_eq!(a.tabs().len(), 1);
+        assert_eq!(a.editor().text(), "");
+        ctrl(&mut a, 'w');
+        assert_eq!(a.tabs().len(), 1);
+    }
+
+    #[test]
+    fn opening_a_note_reuses_an_untouched_first_tab_and_finds_open_ones() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let one = dir.path().join("one.md");
+        let two = dir.path().join("two.md");
+        std::fs::write(&one, "# one\n").expect("write");
+        std::fs::write(&two, "# two\n").expect("write");
+
+        let mut a = app("");
+        assert!(a.open_path(&one));
+        assert_eq!(a.tabs().len(), 1, "the empty start tab was replaced");
+        assert_eq!(a.editor().text(), "# one\n");
+
+        assert!(a.open_path(&two));
+        assert_eq!(a.tabs().len(), 2);
+        assert_eq!(a.active(), 1);
+
+        // Opening the first again switches instead of duplicating.
+        assert!(a.open_path(&one));
+        assert_eq!(a.tabs().len(), 2);
+        assert_eq!(a.active(), 0);
+
+        // The open prompt resolves a bare name next to the current note.
+        ctrl(&mut a, 'o');
+        type_str(&mut a, "three");
+        key(&mut a, KeyCode::Enter);
+        assert_eq!(a.tabs().len(), 3);
+        assert_eq!(
+            a.editor().path(),
+            Some(dir.path().join("three.md").as_path())
+        );
+        assert_eq!(a.tabs()[2].name(), "three.md");
+    }
+
+    #[test]
+    fn switching_tabs_leaves_canvas_mode_and_quit_counts_every_dirty_tab() {
+        let mut a = app("```draw\nrect 0,0 4x2\n```\n");
+        ctrl(&mut a, 'd');
+        assert!(matches!(a.mode, Mode::Canvas(_)));
+        ctrl(&mut a, 't');
+        assert_eq!(a.mode, Mode::Edit);
+        type_str(&mut a, "x");
+        a.switch_tab(0);
+        type_str(&mut a, "y");
+        assert_eq!(a.dirty_count(), 2);
+        ctrl(&mut a, 'q');
+        assert_eq!(a.mode, Mode::ConfirmQuit);
+        key(&mut a, KeyCode::Esc);
+        assert!(!a.quit);
     }
 }

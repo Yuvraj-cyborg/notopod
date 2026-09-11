@@ -20,20 +20,24 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use editor::Editor;
 use graphics::{Graphics, Mode};
-use ratatui::crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
+use ratatui::crossterm::event::{
+    DisableBracketedPaste, EnableBracketedPaste, KeyboardEnhancementFlags,
+    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
 use ratatui::crossterm::execute;
 use theme::Theme;
 
 pub use app::App;
 pub use picker::{pick_theme, Entry as ThemeEntry};
 
-/// Opens `path` (or an empty buffer) in the editor and runs until the user quits.
+/// Opens `paths` (or an empty buffer) in the editor, one tab each, and
+/// runs until the user quits.
 ///
 /// Takes over the terminal for the duration and restores it afterwards,
 /// including on panic. `graphics` decides whether drawings are shown as
 /// pictures; in [`Mode::Auto`] the terminal is asked.
-pub fn run(path: Option<&Path>, theme: Theme, graphics: Mode) -> Result<()> {
-    let editor = match path {
+pub fn run(paths: &[&Path], theme: Theme, graphics: Mode) -> Result<()> {
+    let editor = match paths.first() {
         Some(p) => Editor::open(p).with_context(|| format!("cannot open {}", p.display()))?,
         None => Editor::new(),
     };
@@ -42,10 +46,26 @@ pub fn run(path: Option<&Path>, theme: Theme, graphics: Mode) -> Result<()> {
     // Raw mode is on now, so the terminal's answer can be read.
     let graphics = Graphics::detect(graphics);
     let mut app = App::new(editor, theme).with_graphics(graphics);
+    for path in paths.iter().skip(1) {
+        app.open_path(path);
+    }
+    app.switch_tab(0);
 
+    // Terminals that speak the kitty keyboard protocol can tell Ctrl+Tab
+    // from Tab; the others just do not get that shortcut.
+    let enhanced = ratatui::crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+    if enhanced {
+        let _ = execute!(
+            io::stdout(),
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        );
+    }
     let _ = execute!(io::stdout(), EnableBracketedPaste);
     let result = app.run(&mut terminal);
     let _ = execute!(io::stdout(), DisableBracketedPaste);
+    if enhanced {
+        let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+    }
     let bye = app.release_graphics();
     if !bye.is_empty() {
         let mut out = io::stdout();

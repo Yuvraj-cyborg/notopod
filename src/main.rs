@@ -12,8 +12,9 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "notopod", version, about)]
 struct Cli {
-    /// Note to open. Created on first save if it does not exist.
-    file: Option<PathBuf>,
+    /// Notes to open, one tab each. A note that does not exist yet is
+    /// created on first save.
+    files: Vec<PathBuf>,
 
     /// Theme to use: a built-in name, a user theme, or a .toml file.
     /// Overrides the config file. `notopod themes` shows what there is.
@@ -33,10 +34,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Open a note in the editor (same as `notopod FILE`).
+    /// Open notes in the editor (same as `notopod FILE...`).
     Edit {
-        /// Note to open.
-        file: Option<PathBuf>,
+        /// Notes to open, one tab each.
+        files: Vec<PathBuf>,
     },
     /// Print a note, formatted, and exit.
     Render {
@@ -72,8 +73,8 @@ fn main() -> Result<()> {
     let graphics = || config::resolve_graphics(cli.graphics, &config);
 
     match cli.command {
-        None => tui::run(cli.file.as_deref(), theme()?, graphics()?),
-        Some(Command::Edit { file }) => tui::run(file.as_deref(), theme()?, graphics()?),
+        None => tui::run(&as_paths(&cli.files), theme()?, graphics()?),
+        Some(Command::Edit { files }) => tui::run(&as_paths(&files), theme()?, graphics()?),
         Some(Command::Render {
             file,
             width,
@@ -87,6 +88,10 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn as_paths(files: &[PathBuf]) -> Vec<&std::path::Path> {
+    files.iter().map(PathBuf::as_path).collect()
 }
 
 fn render_note(
