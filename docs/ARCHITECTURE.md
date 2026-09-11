@@ -86,14 +86,15 @@ under `lib/` with short names and `publish = false`.
 | `canvas` | theme, tiny-skia, ab_glyph, png, ratatui (types) | The ` ```draw ` language (`parse`, `to_source`); `render_image` (pixels: `sketch.rs` rough strokes, `text.rs` Excalifont labels, `pixel.rs` layout) and `render` (braille: `raster.rs`, `rough.rs`), both with an editing `Overlay`. |
 | `graphics` | canvas, render, theme, crossterm, rustix | `Graphics`: probes the terminal (kitty graphics, cell size, fg/bg colours), sends PNGs with the kitty protocol, caches them by content, returns placeholder rows; falls back to braille. |
 | `render` | syntax, canvas, theme | Block and inline rendering to `ratatui::text::Line`; word wrap; ANSI serialisation for stdout; the `Drawings` trait. |
-| `editor` | ropey | `Editor`: cursor, movement, editing, undo/redo, search, atomic save, `replace_lines`. Knows nothing about Markdown except the list-continuation rules in `smart.rs`. |
-| `tui` | all of the above, crossterm | `App` state machine (edit / find / save-as / confirm-quit / canvas), `view` (rows), `ui` (draw), key bindings, `canvas_mode`, and `picker` (the theme screen). |
-| `notopod` | tui, graphics, render, theme, clap | The command: `notopod [FILE]`, `render`, `themes`, `config`; reads and writes the config file; `--theme`, `--graphics`. |
+| `editor` | ropey | `Editor`: cursor, movement, editing, undo/redo, search, atomic save, `replace_lines`, character ranges (`slice`, `delete_range`, `line_range`). Knows nothing about Markdown except the list-continuation rules in `smart.rs`. |
+| `notes` | canvas | The notes under a folder and the links between them: `scan` (reads each file once, picks out `[[wikilinks]]` and `[text](note.md)`), `Graph`, and `Graph::drawing`, a force-directed layout into a `canvas::Drawing`. |
+| `tui` | all of the above, crossterm | `App`: tabs, the mode state machine (edit / find / save-as / open / confirm / canvas) and what has the keyboard (note / file panel / graph); `view` (rows), `ui` (draw), `canvas_mode`, `files` (the panel), `graph_view`, `links` (the link under the cursor), `vim` (vim keys), `picker` (the theme screen). |
+| `notopod` | tui, graphics, notes, render, theme, clap | The command: `notopod [FILE...]`, `render`, `graph`, `themes`, `config`; reads and writes the config file; `--theme`, `--graphics`, `--vim`. |
 
-Dependencies point one way: `notopod -> tui -> {graphics, render, canvas,
-editor, syntax, theme}`, `graphics -> {canvas, render, theme}`,
-`render -> {canvas, syntax, theme}`, `canvas -> theme`. `syntax`,
-`editor` and `theme` depend on nothing else in the workspace.
+Dependencies point one way: `notopod -> tui -> {graphics, notes, render,
+canvas, editor, syntax, theme}`, `graphics -> {canvas, render, theme}`,
+`render -> {canvas, syntax, theme}`, `notes -> canvas`, `canvas -> theme`.
+`syntax`, `editor` and `theme` depend on nothing else in the workspace.
 
 The parser crate is called `syntax`, not `core`, on purpose: a crate
 named `core` shadows Rust's built-in `core` in every crate that depends
@@ -162,6 +163,50 @@ show it arrive. The cache holds 32 pictures; evictions and shutdown send
 `a=d,d=I` so the terminal frees the memory. Pictures scroll, clip and
 redraw for free because to ratatui they are text.
 
+### The graph of notes
+
+`notes::scan` is the only thing that reads the whole folder, and it does
+so one file at a time, stopping at two thousand notes and skipping files
+over two megabytes. Links resolve by relative path first and by file name
+second, both ignoring case, so `[[Plan]]`, `[[plan]]` and
+`[the plan](../Plan.md)` all reach `Plan.md`. The result is a
+`canvas::Drawing`: notes are ellipses, links are arrows, and because it
+is a drawing it is rendered by the same code as a ` ```draw ` block, so
+it is a picture where pictures work, braille elsewhere, and coloured by
+the theme, with nothing graph-specific in the renderer.
+
+The layout (`notes::layout`) is Fruchterman–Reingold in a space where
+one unit is a cell's width and half a cell's height, so distances mean
+the same thing horizontally and vertically on a terminal grid. Positions
+start on a spiral rather than at random, so the same notes always give
+the same picture. A final pass slides overlapping boxes apart and never
+moves a box upwards, so it cannot loop.
+
+`tui::graph_view` keeps the graph, its drawing and a selected node, and
+highlights the node through the same `Overlay` canvas mode uses for the
+shape under the cursor. Arrow keys pick the nearest node in that
+direction; Enter opens it in a tab. The view is dropped when it closes.
+
+### Tabs, the file panel and vim keys
+
+`App` holds a `Vec<Tab>`, each a buffer plus its parse and row cache. A
+tab that leaves the screen drops both caches (`Tab::sleep`) and keeps its
+rope, so open notes cost their text and little else; the caches come
+back on the first frame the tab is shown. `Focus` says what has the
+keyboard: the note, the file panel or the graph. Keys that mean the same
+thing everywhere (quit, tabs, the panel, the graph) are in
+`handle_global_key`, which every focus consults first.
+
+The file panel (`tui::files`) is a flattened tree rebuilt from disk on
+demand; only expanded directories are read, and the tree stops at four
+thousand rows. Nothing is watched.
+
+Vim keys (`tui::vim`) are a layer in front of the ordinary key handler:
+in normal mode keys are commands over the editor's existing operations,
+in insert mode they fall through to the ordinary handler, and Ctrl
+chords are the app's in both. It is switched on per run, so the classic
+keys are the default and nothing about them changed.
+
 ### The theme picker
 
 `tui::picker` is the crate's second screen and reuses everything the first
@@ -202,8 +247,8 @@ foreground the terminal reported (or a light grey on a dark background).
 
 The binary owns configuration (`src/config.rs`): `~/.config/notopod/config.toml`
 (or `$NOTOPOD_CONFIG`, or `$XDG_CONFIG_HOME/notopod/config.toml`) with
-`theme = "..."`, a `[canvas] roughness` override and `[graphics] mode`.
-`--theme` and `--graphics` win over the file. User themes are
+`theme = "..."`, a `[canvas] roughness` override, `[graphics] mode` and
+`[keys] vim`. `--theme`, `--graphics` and `--vim` win over the file. User themes are
 `themes/<name>.toml` next to the config file.
 
 ## Other decisions worth knowing
@@ -264,13 +309,14 @@ parses and that its `name` matches.
 
 In the order we intend to build:
 
-1. Selection, copy and cut in the editor.
+1. Selection, copy and cut in the editor (and with them, vim's visual
+   mode).
 2. ` ```mermaid ` blocks: flowchart (`graph LR`/`TD`, layered layout)
    and `sequenceDiagram`, drawn with the canvas raster. A `lib/mermaid`
    crate that produces a `canvas::Drawing`, so it gets the hand-drawn
-   look and the same renderer for free.
-3. Notes manager: a file tree for a folder of notes, search across notes,
-   `[[wiki links]]` and backlinks.
+   look and the same renderer for free, the way the graph of notes does.
+3. Search across notes, and a backlinks list for the current note (the
+   graph already counts them).
 4. Later: Sixel and iTerm2 pictures for terminals without the kitty
    protocol, export of notes to HTML and of drawings to PNG and SVG
    (the picture renderer already produces the PNG), runnable code blocks.

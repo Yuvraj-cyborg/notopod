@@ -26,11 +26,19 @@ A Markdown editor for the terminal, in one binary with no runtime.
 - **A drawing mode.** Press Ctrl+D and place boxes, arrows and labels with
   single keys — no coordinates to type. Every action rewrites the block's
   text, so the file always matches the picture.
+- **A folder of notes, not just a file.** Tabs for the notes you have
+  open, a file panel for the ones you don't, `[[links]]` between them
+  that you can follow, and a graph of the whole folder — Obsidian's
+  graph view, drawn by the same hand as the diagrams.
 - **Plain files.** A drawing is a short, readable code block in any other
   editor, and your notes are `.md` all the way down.
 - **Nine themes**, or your own in a TOML file, tried on for size with
   `notopod themes`. `default` borrows your terminal's colours, so notopod
   looks like the rest of your setup.
+- **Vim keys if you want them**, off by default. One line in the config
+  file turns them on; nothing else changes.
+- **Small.** One 1.9 MB binary. Four megabytes of memory for a note, five
+  with drawings; notes in background tabs cost only their text.
 
 ## Install
 
@@ -61,14 +69,17 @@ archives on the Releases page. Unpack and put `notopod` on your `PATH`.
 
 ```
 notopod notes.md            open a note (created on first save if it does not exist)
+notopod a.md b.md           open several, one tab each
 notopod                     start empty; you are asked for a name when you save
 notopod render notes.md     print a note formatted, then exit
+notopod graph [DIR]         draw the notes in a folder and the links between them
 notopod themes              try themes on a sample note and keep the one you like
 notopod themes --list       just the names (which is what a pipe gets)
 notopod themes nord         print a theme's TOML, to copy or redirect
 notopod config              show where the config file and your themes come from
 notopod --theme nord ...     use a theme for this run (`-t`)
 notopod --graphics braille   force dot art where pictures would work (`-g`)
+notopod --vim ...            vim keys for this run
 ```
 
 `render` is for scripts and pipes, say `notopod render todo.md | less -R`.
@@ -93,10 +104,79 @@ as escape codes.
 | Ctrl+F | Find, matching as you type. Enter jumps to the next match, Esc stops |
 | Ctrl+G | Next match for the last search |
 | Ctrl+D | Draw: edit the drawing under the cursor, or start one here |
+| Ctrl+] | Follow the link under the cursor |
+| Ctrl+O | Open a note by name, in a new tab |
+| Ctrl+T / Ctrl+W | New tab / close this tab (asking first if it has unsaved changes) |
+| Ctrl+PageDown / Ctrl+PageUp | Next / previous tab (Ctrl+Tab / Ctrl+Shift+Tab too, in terminals that can tell them apart) |
+| Ctrl+B | The file panel: open it, go to it, close it |
+| Ctrl+K | The graph of your notes |
 | Ctrl+P | Turn live preview off or on |
 | Ctrl+Q | Quit, asking first if there are unsaved changes |
 
 Pasting from the terminal works as usual.
+
+## Files, tabs and links
+
+Every note you open gets a tab; a bar above the note appears once there
+are two. **Ctrl+B** opens a panel of the folder on the left — directories
+first, then notes, nothing hidden or unrelated — starting on the note you
+are in. Enter opens a note (or switches to its tab), Enter on a folder
+unfolds it, Right and Left step in and out, `r` reads the disk again,
+Esc goes back to the note with the panel still up, and Ctrl+B from the
+panel puts it away. Only what you unfold is read.
+
+Notes link to each other the way Obsidian's do: `[[Plan]]` is a link to
+`Plan.md` anywhere under the folder, `[[Plan|the plan]]` shows other
+words, and an ordinary `[text](other.md)` works too. Links render as
+links, and **Ctrl+]** follows the one under the cursor into a tab; a
+`[[name]]` that has no note yet becomes a new note next to this one, so
+you can write the link first and the note after.
+
+**Ctrl+K** draws the whole folder as a graph:
+
+```
+ 7 notes · 14 links   ~/notes
+        ╭────────╮          ╭─────────╮
+        │  Home  │────────▶ │  Ideas  │ ─ ─ ▶ ( Lonely )
+        ╰────────╯╲         ╰─────────╯
+              │    ╲              │
+              ▼     ╲             ▼
+        ╭────────╮   ╲      ╭─────────╮      ╭────────╮
+        │  Plan  │ ◀──╲─── │ Reading │      │ Rocket │───▶ Garden
+        ╰────────╯     ╲    ╰─────────╯      ╰────────╯
+```
+
+Every note is an ellipse labelled with its first heading, every link an
+arrow; notes with many links are filled and coloured, notes with none
+are dashed. Arrows move to the nearest note in that direction, Tab walks
+them in order, Enter opens one, `r` reads the folder again, Esc puts the
+graph away. It is a real picture in terminals that show them and braille
+elsewhere, in your theme's colours, because it is drawn by the same
+renderer as a ` ```draw ` block. `notopod graph` prints it without the
+editor.
+
+## Vim keys
+
+Off by default. `--vim`, or in the config file:
+
+```toml
+[keys]
+vim = true
+```
+
+You start in normal mode. `h j k l w b e 0 ^ $ gg G` move (`j` and `k`
+through rendered blocks, like the arrows), with counts; `d y c` work
+over any of them and doubled for lines (`dd dw d$ cw yy cc`), plus `D C
+Y S x X r J p P u Ctrl+R >> <<`. `i a I A o O` go into insert mode,
+which is the ordinary editor, and Esc comes back. `/` searches as you
+type, `n` and `N` step through the matches. `gt` and `gT` change tabs,
+`gf` follows the link under the cursor, `ZZ` saves and quits. The `:`
+line knows `w q q! wq x e bn bp bd tabnew files graph draw theme noh`
+and a line number.
+
+The Ctrl chords in the status bar keep working in both modes, so turning
+this on takes nothing away. There is no visual mode yet: notopod has no
+selection yet, and `v` says so.
 
 ## How the preview works
 
@@ -243,6 +323,9 @@ roughness = 0.7    # 0.0 draws exact geometry, 1.0 is very sketchy
 
 [graphics]
 mode = "auto"      # auto | kitty | braille: how drawings are shown
+
+[keys]
+vim = false        # vim keys in the editor
 ```
 
 For your own, start from a built-in one:
@@ -259,11 +342,10 @@ file listing what can be set.
 
 ## What is not there yet
 
-- selecting text, copy and cut
+- selecting text, copy and cut (and with them, vim's visual mode)
 - ` ```mermaid ` blocks: flowcharts and sequence diagrams laid out for you
-- a file tree, search across notes, `[[links]]` and backlinks
+- search across notes, and a list of the notes that link here
 - syntax colours inside code blocks
-- vim-style keys
 - pictures over Sixel or the iTerm2 protocol; export to PNG or SVG;
   runnable code blocks
 
@@ -281,7 +363,8 @@ it is built from are library crates under `lib/`.
 | `lib/render` | Turns blocks into styled, wrapped terminal text |
 | `lib/theme` | Palettes, styles, built-in themes and the theme file format |
 | `lib/editor` | The text buffer: cursor, editing, undo, saving |
-| `lib/tui` | The screen: live preview, keys, status bar, drawing mode |
+| `lib/notes` | The links between the notes in a folder, and the graph they make |
+| `lib/tui` | The screen: tabs, live preview, keys (classic and vim), file panel, graph, drawing mode, theme picker |
 
 The library crates have short names (`syntax`, `render`, ...) and are not
 published to crates.io on their own; the product is the binary. There is

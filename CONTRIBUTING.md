@@ -89,7 +89,8 @@ dependencies. Users get releases, Nix, or `cargo install --git`.
 | `lib/render` | Block and inline rendering, wrapping, ANSI output, the `Drawings` trait |
 | `lib/theme` | `Theme`, `Palette`, style strings, built-in theme TOML files |
 | `lib/editor` | Rope buffer, cursor, undo history, list-aware Enter, search, save |
-| `lib/tui` | App state, key handling, screen layout, drawing, canvas mode |
+| `lib/notes` | Links between the notes in a folder; the graph and its layout |
+| `lib/tui` | App state, tabs, key handling (classic and vim), screen layout, file panel, graph screen, canvas mode, theme picker |
 | `docs/` | Architecture notes |
 
 New library crates go in `lib/<name>` with a short name and
