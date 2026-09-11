@@ -3,11 +3,11 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use notopad_core::{Document, LineIndex};
-use notopad_editor::{Editor, Position};
-use notopad_render::Theme;
+use editor::{Editor, Position};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::DefaultTerminal;
+use render::Theme;
+use syntax::{Document, LineIndex};
 
 use crate::view::{self, Source, View};
 
@@ -119,7 +119,7 @@ impl App {
             let text = self.editor.text();
             self.parsed = Parsed {
                 version: self.editor.version(),
-                doc: notopad_core::parse(&text),
+                doc: syntax::parse(&text),
                 index: LineIndex::new(&text),
             };
         }

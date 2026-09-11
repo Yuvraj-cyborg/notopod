@@ -5,10 +5,10 @@
 //! raw source so the cursor has real characters to sit on. Lines outside
 //! any block (blank lines) are always raw.
 
-use notopad_core::{BlockKind, Document, LineIndex};
-use notopad_editor::Editor;
-use notopad_render::{render_block, render_list_item, Theme};
+use editor::Editor;
 use ratatui::text::Line;
+use render::{render_block, render_list_item, Theme};
+use syntax::{BlockKind, Document, LineIndex};
 use unicode_width::UnicodeWidthChar;
 
 /// Screen columns a tab occupies in raw source.
@@ -300,13 +300,13 @@ pub fn col_at_x(text: &str, start_col: usize, x: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use notopad_editor::Position;
+    use editor::Position;
 
     fn view_for(text: &str, cursor: Position, width: usize, preview: bool) -> View {
         let mut editor = Editor::from_text(text);
         editor.set_cursor(cursor);
         let src = editor.text();
-        let doc = notopad_core::parse(&src);
+        let doc = syntax::parse(&src);
         let index = LineIndex::new(&src);
         build(&editor, &doc, &index, width, preview, &Theme::default())
     }

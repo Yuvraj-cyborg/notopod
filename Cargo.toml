@@ -1,24 +1,59 @@
+# The `notopod` binary lives at the workspace root, so `cargo run`,
+# `cargo install --path .` and `cargo build` all do the obvious thing.
+# Library crates live under lib/.
+[package]
+name = "notopod"
+description = "A terminal notes editor with live Markdown preview"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+publish = false
+
+[[bin]]
+name = "notopod"
+path = "src/main.rs"
+
+[dependencies]
+syntax.workspace = true
+render.workspace = true
+tui.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+crossterm.workspace = true
+
+[lints]
+workspace = true
+
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["lib/*"]
+# Include the root package so plain `cargo test` / `cargo clippy` cover
+# everything, not just the binary.
+default-members = [".", "lib/*"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT"
-repository = "https://github.com/notopad/notopad"
-homepage = "https://github.com/notopad/notopad"
+repository = "https://github.com/Yuvraj-cyborg/notopod"
+homepage = "https://github.com/Yuvraj-cyborg/notopod"
 keywords = ["notes", "markdown", "tui", "editor", "terminal"]
 categories = ["text-editors", "command-line-utilities"]
 
 [workspace.dependencies]
-# Internal crates. Version + path so they can be published to crates.io
-# individually while the workspace always builds against the local copy.
-notopad-core = { version = "0.1.0", path = "crates/notopad-core" }
-notopad-render = { version = "0.1.0", path = "crates/notopad-render" }
-notopad-editor = { version = "0.1.0", path = "crates/notopad-editor" }
-notopad-tui = { version = "0.1.0", path = "crates/notopad-tui" }
+# Internal crates. Short, unprefixed names; they are not published to
+# crates.io (see `publish = false` in each), so no version is needed here.
+syntax = { path = "lib/syntax" }
+render = { path = "lib/render" }
+editor = { path = "lib/editor" }
+tui = { path = "lib/tui" }
 
 # External
 anyhow = "1.0"

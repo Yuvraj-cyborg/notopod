@@ -1,17 +1,15 @@
 [package]
-name = "notopad-render"
-description = "Renders notopad documents to styled terminal text"
+name = "render"
+description = "Renders notopod documents to styled terminal text"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
-keywords.workspace = true
-categories.workspace = true
+publish = false
 
 [dependencies]
-notopad-core.workspace = true
+syntax.workspace = true
 ratatui.workspace = true
 unicode-width.workspace = true
 

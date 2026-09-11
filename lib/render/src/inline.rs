@@ -1,8 +1,8 @@
 //! Inline content to styled spans.
 
-use notopad_core::Inline;
 use ratatui::style::Style;
 use ratatui::text::Span;
+use syntax::Inline;
 
 use crate::Theme;
 
