@@ -22,7 +22,9 @@ jobs:
           fetch-depth: 0
       - name: Tag must match the workspace version
         run: |
-          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          # The root [package] inherits (`version.workspace = true`); the
+          # real number is the quoted one under [workspace.package].
+          version=$(grep -m1 '^version = "' Cargo.toml | cut -d'"' -f2)
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
             echo "tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
             exit 1
@@ -54,7 +56,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
-          bin: notopad
+          bin: notopod
           target: ${{ matrix.target }}
           tar: unix
           zip: windows

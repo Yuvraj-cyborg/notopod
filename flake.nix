@@ -1,5 +1,5 @@
 {
-  description = "notopad - a terminal notes editor with live Markdown preview";
+  description = "notopod - a terminal notes editor with live Markdown preview";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -12,17 +12,17 @@
     {
       packages = forAllSystems (pkgs: {
         default = pkgs.rustPlatform.buildRustPackage {
-          pname = "notopad";
+          pname = "notopod";
           inherit version;
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
-          cargoBuildFlags = [ "--package" "notopad" ];
+          cargoBuildFlags = [ "--package" "notopod" ];
           cargoTestFlags = [ "--workspace" ];
           meta = with pkgs.lib; {
             description = "A terminal notes editor with live Markdown preview";
-            homepage = "https://github.com/notopad/notopad";
+            homepage = "https://github.com/Yuvraj-cyborg/notopod";
             license = licenses.mit;
-            mainProgram = "notopad";
+            mainProgram = "notopod";
           };
         };
       });
@@ -30,7 +30,7 @@
       apps = forAllSystems (pkgs: {
         default = {
           type = "app";
-          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/notopad";
+          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/notopod";
         };
       });
 

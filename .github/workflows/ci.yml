@@ -57,4 +57,4 @@ jobs:
       - run: nix build --print-build-logs
       - run: nix flake check --print-build-logs
       - name: Smoke test the built binary
-        run: ./result/bin/notopad render README.md --width 60 --no-color | head -20
+        run: ./result/bin/notopod render README.md --width 60 --no-color | head -20
