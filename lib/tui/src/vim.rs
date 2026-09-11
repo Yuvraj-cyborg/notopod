@@ -916,7 +916,11 @@ mod tests {
         type_str(&mut a, "^");
         assert_eq!(cursor(&a), (1, 2));
         type_str(&mut a, "G");
-        assert_eq!(cursor(&a), (2, 0), "G skips the empty line after the last break");
+        assert_eq!(
+            cursor(&a),
+            (2, 0),
+            "G skips the empty line after the last break"
+        );
         type_str(&mut a, "gg");
         assert_eq!(cursor(&a), (0, 0));
         type_str(&mut a, "3G");
