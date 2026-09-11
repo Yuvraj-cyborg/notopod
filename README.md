@@ -28,8 +28,9 @@ A Markdown editor for the terminal, in one binary with no runtime.
   text, so the file always matches the picture.
 - **Plain files.** A drawing is a short, readable code block in any other
   editor, and your notes are `.md` all the way down.
-- **Nine themes**, or your own in a TOML file. `default` borrows your
-  terminal's colours, so notopod looks like the rest of your setup.
+- **Nine themes**, or your own in a TOML file, tried on for size with
+  `notopod themes`. `default` borrows your terminal's colours, so notopod
+  looks like the rest of your setup.
 
 ## Install
 
@@ -62,7 +63,9 @@ archives on the Releases page. Unpack and put `notopod` on your `PATH`.
 notopod notes.md            open a note (created on first save if it does not exist)
 notopod                     start empty; you are asked for a name when you save
 notopod render notes.md     print a note formatted, then exit
-notopod themes              list themes; `notopod themes nord` prints one to copy
+notopod themes              try themes on a sample note and keep the one you like
+notopod themes --list       just the names (which is what a pipe gets)
+notopod themes nord         print a theme's TOML, to copy or redirect
 notopod config              show where the config file and your themes come from
 notopod --theme nord ...     use a theme for this run (`-t`)
 notopod --graphics braille   force dot art where pictures would work (`-g`)
@@ -202,7 +205,33 @@ and the shape you are placing or moving.
 Built in: `default`, `mono`, `catppuccin-mocha`, `gruvbox-dark`, `nord`,
 `tokyo-night`, `dracula`, `solarized-dark` and `solarized-light`.
 
-Pick one for a run with `--theme nord`, or for good in the config file:
+`notopod themes` is a picker. The themes are on the left, your own among
+them, and a sample note is on the right in whichever one is highlighted —
+headings, tasks, a table and a drawing, drawn by the same renderer the
+editor uses, so it is the real thing and not a swatch:
+
+```
+   default          │# notopod
+   mono             │
+   catppuccin-mocha │Notes in your terminal, with bold, italic and code.
+   gruvbox-dark     │
+ • nord             │☑ pick a theme
+   tokyo-night      │☐ write something
+   dracula          │
+   solarized-dark   │▎ Every block is formatted except the one you are editing.
+   solarized-light  │
+   mine             │ (a drawing here, as a picture or as braille)
+
+ nord   built-in                 ↑↓ move   type to filter   Enter use   Esc cancel
+```
+
+Arrows move, typing filters the list, Enter saves your choice to the
+config file and Esc leaves it alone. The dot marks the theme in use.
+`notopod themes --set nord` saves one without the picker, and `--theme
+nord` still overrides both for a single run.
+
+Saving keeps the rest of your config file exactly as it was — comments and
+all — so it is safe to hand-edit and to pick from:
 
 ```toml
 # ~/.config/notopod/config.toml

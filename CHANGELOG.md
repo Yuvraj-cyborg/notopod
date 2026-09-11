@@ -7,6 +7,23 @@ workspace share one version number.
 
 ## [Unreleased]
 
+### Added
+
+- `notopod themes` is a picker: the themes on the left, a sample note on
+  the right drawn in the highlighted one, drawings and all. Arrows move,
+  typing filters the list, Enter saves the choice to the config file and
+  Esc leaves it alone. A dot marks the theme in use, and your own themes
+  are in the list next to the built-in ones.
+- `notopod themes --set NAME` saves a theme without the picker, and
+  `notopod themes --list` prints the old list. A pipe still gets the
+  list, so `notopod themes | grep` keeps working.
+
+### Changed
+
+- Writing the theme keeps the rest of the config file as it was:
+  comments, spacing and other settings are untouched, and the key is
+  replaced where it stands rather than the file being rewritten.
+
 ## [0.1.2] - 2026-09-11
 
 ### Added

@@ -87,8 +87,8 @@ under `lib/` with short names and `publish = false`.
 | `graphics` | canvas, render, theme, crossterm, rustix | `Graphics`: probes the terminal (kitty graphics, cell size, fg/bg colours), sends PNGs with the kitty protocol, caches them by content, returns placeholder rows; falls back to braille. |
 | `render` | syntax, canvas, theme | Block and inline rendering to `ratatui::text::Line`; word wrap; ANSI serialisation for stdout; the `Drawings` trait. |
 | `editor` | ropey | `Editor`: cursor, movement, editing, undo/redo, search, atomic save, `replace_lines`. Knows nothing about Markdown except the list-continuation rules in `smart.rs`. |
-| `tui` | all of the above, crossterm | `App` state machine (edit / find / save-as / confirm-quit / canvas), `view` (rows), `ui` (draw), key bindings, `canvas_mode`. |
-| `notopod` | tui, graphics, render, theme, clap | The command: `notopod [FILE]`, `render`, `themes`, `config`; reads the config file; `--theme`, `--graphics`. |
+| `tui` | all of the above, crossterm | `App` state machine (edit / find / save-as / confirm-quit / canvas), `view` (rows), `ui` (draw), key bindings, `canvas_mode`, and `picker` (the theme screen). |
+| `notopod` | tui, graphics, render, theme, clap | The command: `notopod [FILE]`, `render`, `themes`, `config`; reads and writes the config file; `--theme`, `--graphics`. |
 
 Dependencies point one way: `notopod -> tui -> {graphics, render, canvas,
 editor, syntax, theme}`, `graphics -> {canvas, render, theme}`,
@@ -161,6 +161,16 @@ before ratatui writes the frame, so the image exists when the cells that
 show it arrive. The cache holds 32 pictures; evictions and shutdown send
 `a=d,d=I` so the terminal frees the memory. Pictures scroll, clip and
 redraw for free because to ratatui they are text.
+
+### The theme picker
+
+`tui::picker` is the crate's second screen and reuses everything the first
+one is made of: it renders a small sample note through
+`render::render_document_with` with the highlighted theme, so what you see
+is the real renderer, pictures included. It answers with a name and writes
+nothing itself; `src/config.rs` puts the name in the config file by
+editing the text rather than re-serialising it, which is what keeps a
+hand-written file's comments and layout intact.
 
 ### Canvas mode
 
