@@ -3,8 +3,7 @@
 use ratatui::style::Style;
 use ratatui::text::Span;
 use syntax::Inline;
-
-use crate::Theme;
+use theme::Theme;
 
 /// Renders inline content to spans, starting from `base` style.
 ///

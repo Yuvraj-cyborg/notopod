@@ -17,6 +17,7 @@ use anyhow::{Context, Result};
 use editor::Editor;
 use ratatui::crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
 use ratatui::crossterm::execute;
+use theme::Theme;
 
 pub use app::App;
 
@@ -24,12 +25,12 @@ pub use app::App;
 ///
 /// Takes over the terminal for the duration and restores it afterwards,
 /// including on panic.
-pub fn run(path: Option<&Path>) -> Result<()> {
+pub fn run(path: Option<&Path>, theme: Theme) -> Result<()> {
     let editor = match path {
         Some(p) => Editor::open(p).with_context(|| format!("cannot open {}", p.display()))?,
         None => Editor::new(),
     };
-    let mut app = App::new(editor);
+    let mut app = App::new(editor, theme);
 
     let mut terminal = ratatui::init();
     let _ = execute!(io::stdout(), EnableBracketedPaste);

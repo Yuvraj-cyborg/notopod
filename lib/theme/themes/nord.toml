@@ -1,0 +1,13 @@
+# Nord. https://www.nordtheme.com
+name = "nord"
+
+[colors]
+fg = "#d8dee9"       # nord4
+muted = "#4c566a"    # nord3
+red = "#bf616a"      # nord11
+orange = "#d08770"   # nord12
+yellow = "#ebcb8b"   # nord13
+green = "#a3be8c"    # nord14
+cyan = "#88c0d0"     # nord8
+blue = "#81a1c1"     # nord9
+magenta = "#b48ead"  # nord15

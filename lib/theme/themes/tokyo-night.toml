@@ -1,0 +1,13 @@
+# Tokyo Night. https://github.com/enkia/tokyo-night-vscode-theme
+name = "tokyo-night"
+
+[colors]
+fg = "#c0caf5"
+muted = "#565f89"
+red = "#f7768e"
+orange = "#ff9e64"
+yellow = "#e0af68"
+green = "#9ece6a"
+cyan = "#7dcfff"
+blue = "#7aa2f7"
+magenta = "#bb9af7"

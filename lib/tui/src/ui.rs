@@ -1,7 +1,6 @@
 //! Drawing.
 
 use ratatui::layout::{Constraint, Layout, Position, Rect};
-use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Text};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -81,8 +80,7 @@ impl App {
         let pad = width.saturating_sub(text.width());
         text.push_str(&" ".repeat(pad));
 
-        let style = Style::new().add_modifier(Modifier::REVERSED);
-        frame.render_widget(Paragraph::new(text).style(style), area);
+        frame.render_widget(Paragraph::new(text).style(self.theme.status_bar), area);
     }
 
     fn status_left(&self) -> String {

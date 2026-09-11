@@ -7,8 +7,9 @@
 
 use editor::Editor;
 use ratatui::text::Line;
-use render::{render_block, render_list_item, Theme};
+use render::{render_block, render_list_item};
 use syntax::{BlockKind, Document, LineIndex};
+use theme::Theme;
 use unicode_width::UnicodeWidthChar;
 
 /// Screen columns a tab occupies in raw source.

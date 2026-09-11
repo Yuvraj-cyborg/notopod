@@ -3,11 +3,11 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use syntax::{Alignment, Block, BlockKind, Document, Inline, ListItem};
+use theme::Theme;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::inline::render_inlines;
 use crate::wrap::wrap_spans;
-use crate::Theme;
 
 /// Bullet characters by nesting depth.
 const BULLETS: [&str; 3] = ["•", "◦", "▪"];

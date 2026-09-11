@@ -6,7 +6,8 @@
 //! turns them into ANSI escape sequences with [`ansi::to_ansi`].
 //!
 //! ```
-//! use render::{render_document, Theme};
+//! use render::render_document;
+//! use theme::Theme;
 //!
 //! let doc = syntax::parse("# Hi\n\nSome **bold** text.\n");
 //! let lines = render_document(&doc, 40, &Theme::default());
@@ -16,9 +17,7 @@
 pub mod ansi;
 mod block;
 mod inline;
-pub mod theme;
 pub mod wrap;
 
 pub use block::{render_block, render_document, render_list_item};
 pub use inline::render_inlines;
-pub use theme::Theme;

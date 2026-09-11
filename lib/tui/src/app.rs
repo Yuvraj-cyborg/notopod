@@ -6,8 +6,8 @@ use anyhow::Result;
 use editor::{Editor, Position};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::DefaultTerminal;
-use render::Theme;
 use syntax::{Document, LineIndex};
+use theme::Theme;
 
 use crate::view::{self, Source, View};
 
@@ -65,11 +65,11 @@ struct CachedView {
 }
 
 impl App {
-    /// Creates the screen around `editor`.
-    pub fn new(editor: Editor) -> Self {
+    /// Creates the screen around `editor`, drawn with `theme`.
+    pub fn new(editor: Editor, theme: Theme) -> Self {
         Self {
             editor,
-            theme: Theme::default(),
+            theme,
             preview: true,
             mode: Mode::Edit,
             scroll: 0,

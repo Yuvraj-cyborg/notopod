@@ -1,6 +1,6 @@
 [package]
-name = "render"
-description = "Renders notopod documents to styled terminal text"
+name = "theme"
+description = "Colour themes for notopod: palette, styles, built-in themes and the theme file format"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,10 +9,9 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-syntax.workspace = true
-theme.workspace = true
 ratatui.workspace = true
-unicode-width.workspace = true
+serde.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true
