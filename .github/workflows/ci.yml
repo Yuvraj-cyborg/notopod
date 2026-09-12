@@ -39,6 +39,26 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  installer:
+    name: installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shellcheck
+        run: shellcheck install.sh
+      # The script people are told to pipe into their shell gets run for
+      # real, against a real release, on every push.
+      - name: Installs a release and explains itself
+        run: |
+          sh install.sh --help | grep -q -- '--version'
+          sh install.sh --frobnicate 2>&1 | grep -q 'unknown option'
+          dir=$(mktemp -d)
+          sh install.sh --to "$dir" --version v0.3.0
+          "$dir/notopod" --version
+          # And through a pipe, the way the README says to run it.
+          cat install.sh | sh -s -- --to "$dir/piped"
+          "$dir/piped/notopod" --version
+
   msrv:
     name: minimum supported rust (1.88)
     runs-on: ubuntu-latest

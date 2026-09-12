@@ -7,6 +7,28 @@ workspace share one version number.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-11
+
+### Added
+
+- An installer, so there is a one-line way in:
+
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/Yuvraj-cyborg/notopod/main/install.sh | sh
+  ```
+
+  It works out the target from `uname`, takes that archive from the
+  latest release, verifies it against the `.sha256` published beside it,
+  and writes the binary to `~/.local/bin` — `--to DIR` and `--version
+  TAG` change where and which, and both have environment-variable
+  equivalents. It says so plainly when the install directory is not on
+  `PATH`, when a musl system asks for a glibc build, and when there is no
+  binary for the machine. Nothing outside the install directory is
+  written, and nothing is installed if the checksum does not match.
+- The installer is attached to every release too, so
+  `.../releases/download/<tag>/install.sh` is a URL that cannot change
+  after the fact, and release notes now end with how to install.
+
 ## [0.3.0] - 2026-09-11
 
 ### Added
@@ -173,7 +195,8 @@ First release. A working editor with live preview; no diagram language yet.
 - CI on Linux, macOS and Windows; tagged releases build binaries for five
   targets.
 
-[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.2...v0.2.1
 [0.1.2]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.0...v0.1.2
