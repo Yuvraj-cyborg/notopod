@@ -22,6 +22,7 @@
 //! enabled = true          # draw ```manim blocks (runs their Python when it has to)
 //! command = "manim"       # or "uv run manim", "python -m manim", ...
 //! python = "..."          # the Python manim is installed in, if `command` hides it
+//! native = true           # draw the scenes notopod understands itself, no Python
 //! quality = "medium"      # low | medium | high
 //! timeout = 60            # seconds one scene may take
 //! ```
@@ -68,6 +69,8 @@ pub struct ManimSection {
     /// The Python that has manim installed, for a `command` it cannot
     /// be read from (`uv run manim`).
     pub python: Option<PathBuf>,
+    /// Draw the scenes notopod understands itself. On unless false.
+    pub native: Option<bool>,
     /// `low`, `medium` or `high` (or `l`, `m`, `h`).
     pub quality: Option<String>,
     /// Seconds one scene may take.
@@ -193,6 +196,7 @@ pub fn resolve_manim(config: &Config) -> Result<Option<manim::Manim>> {
         m.command = words;
     }
     m.python.clone_from(&section.python);
+    m.native = section.native.unwrap_or(true);
     if let Some(q) = &section.quality {
         m.quality = match q.trim().to_ascii_lowercase().as_str() {
             "l" | "low" => 'l',
