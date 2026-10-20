@@ -605,8 +605,8 @@ mod tests {
 
     #[test]
     fn empty_block_renders_nothing() {
-        assert!(plain("").is_empty());
-        assert!(plain("# just a comment\n").is_empty());
+        assert_eq!(plain(""), Vec::<String>::new());
+        assert_eq!(plain("# just a comment\n"), Vec::<String>::new());
         assert_eq!(plain("size 4x2\n").len(), 2);
     }
 

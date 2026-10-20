@@ -472,7 +472,7 @@ mod tests {
         if !math::TYPESET {
             // A build without typesetting spells it out instead.
             assert!(lines[0].to_string().contains('√'));
-            assert!(g.take_pending().is_empty());
+            assert!(g.take_pending().is_empty(), "text, so nothing sent");
             return;
         }
         assert!(lines.len() >= 2, "a fraction is taller than a line");
@@ -493,12 +493,12 @@ mod tests {
         // What does not parse is spelled out, not dropped.
         let broken = g.math(r"\frac{1", &theme, 80);
         assert_eq!(broken[0].to_string().trim(), "1");
-        assert!(g.take_pending().is_empty());
+        assert!(g.take_pending().is_empty(), "text, so nothing sent");
 
         // Braille mode never sends pictures of equations either.
         let mut b = Graphics::braille();
         assert!(b.math(tex, &theme, 80)[0].to_string().contains('√'));
-        assert!(b.take_pending().is_empty());
+        assert!(b.take_pending().is_empty(), "braille sends nothing");
     }
 
     #[test]
@@ -527,7 +527,7 @@ mod tests {
         let mut g = Graphics::braille();
         let lines = g.draw(&drawing("rect 0,0 6x2\n"), &Theme::default(), 80, None);
         assert_eq!(lines.len(), 3);
-        assert!(g.take_pending().is_empty());
+        assert!(g.take_pending().is_empty(), "braille sends nothing");
         assert!(!g.pictures());
     }
 
@@ -545,7 +545,7 @@ mod tests {
 
         // Same drawing again: nothing new is sent, same id.
         let again = g.draw(&d, &Theme::default(), 80, None);
-        assert!(g.take_pending().is_empty());
+        assert!(g.take_pending().is_empty(), "cached: not sent twice");
         assert_eq!(again[0].spans[0].style.fg, lines[0].spans[0].style.fg);
 
         // A different drawing gets a different id.
@@ -556,7 +556,7 @@ mod tests {
             None,
         );
         assert_ne!(other[0].spans[0].style.fg, lines[0].spans[0].style.fg);
-        assert!(!g.take_pending().is_empty());
+        assert!(!g.take_pending().is_empty(), "the new picture is sent");
     }
 
     #[test]
@@ -591,9 +591,8 @@ mod tests {
     #[test]
     fn blank_drawing_has_no_rows() {
         let mut g = Graphics::kitty(CellSize::new(8, 16), (255, 255, 255));
-        assert!(g
-            .draw_source("# nothing\n", &Theme::default(), 80)
-            .is_empty());
+        let rows = g.draw_source("# nothing\n", &Theme::default(), 80);
+        assert!(rows.is_empty(), "{rows:?}");
         assert_eq!(g.draw_source("size 4x2\n", &Theme::default(), 80).len(), 2);
     }
 

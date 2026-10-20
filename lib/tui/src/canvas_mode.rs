@@ -574,7 +574,7 @@ mod tests {
         assert!(!s.delete());
         s.cursor = Point::new(0, 0);
         assert!(s.delete());
-        assert!(s.drawing.shapes.is_empty());
+        assert!(s.drawing.shapes.is_empty(), "{:?}", s.drawing.shapes);
     }
 
     #[test]

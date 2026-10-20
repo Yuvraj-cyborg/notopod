@@ -904,7 +904,7 @@ mod tests {
         assert_eq!(img.width(), cols as u32 * 10);
         assert_eq!(img.height(), rows as u32 * 20);
         assert!(opaque(&img) > 200);
-        assert!(!img.to_png().is_empty());
+        assert!(img.to_png().starts_with(b"\x89PNG"));
     }
 
     #[test]

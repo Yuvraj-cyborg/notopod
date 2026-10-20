@@ -435,7 +435,7 @@ mod tests {
 
         // Esc clears the filter first, and only then leaves.
         press(&mut p, KeyCode::Esc);
-        assert!(p.filter.is_empty());
+        assert_eq!(p.filter, "");
         assert_eq!(p.shown.len(), 4);
         assert!(p.done.is_none());
         press(&mut p, KeyCode::Esc);
@@ -466,7 +466,8 @@ mod tests {
         );
 
         // Too narrow to be worth it: nothing rather than a mangled note.
-        assert!(p.preview_lines(&theme, 4).is_empty());
+        let lines = p.preview_lines(&theme, 4);
+        assert!(lines.is_empty(), "{lines:?}");
     }
 
     #[test]
