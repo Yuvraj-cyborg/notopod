@@ -19,6 +19,9 @@ pub fn parse(source: &str) -> Document {
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
     options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    // `$x$` and `$$x$$`. A dollar followed by a space or a digit after the
+    // closing one does not count, so "$5 and $10" stays money.
+    options.insert(Options::ENABLE_MATH);
 
     let parser = Parser::new_ext(source, options);
     let mut builder = Builder {
@@ -49,7 +52,7 @@ impl Builder<'_> {
                 if let Some(span) = span {
                     out.push(Block {
                         span,
-                        kind: BlockKind::Paragraph(inlines),
+                        kind: paragraph(inlines),
                     });
                 }
                 continue;
@@ -74,7 +77,7 @@ impl Builder<'_> {
                             self.expect_end(end);
                             out.push(Block {
                                 span: range,
-                                kind: BlockKind::Paragraph(inlines),
+                                kind: paragraph(inlines),
                             });
                         }
                         Tag::Heading { level, .. } => {
@@ -160,7 +163,7 @@ impl Builder<'_> {
                 }),
                 Event::DisplayMath(math) => out.push(Block {
                     span: range,
-                    kind: BlockKind::Paragraph(vec![Inline::Text(math.into_string())]),
+                    kind: BlockKind::Math(math.into_string()),
                 }),
                 // Every inline event is handled by `peek_is_inline` above.
                 _ => {}
@@ -237,9 +240,17 @@ impl Builder<'_> {
             extend_span(&mut span, &range);
 
             match event {
-                Event::Text(t) | Event::InlineHtml(t) | Event::InlineMath(t) => {
+                Event::Text(t) | Event::InlineHtml(t) => {
                     push_text(&mut out, &t);
                 }
+                Event::InlineMath(t) => out.push(Inline::Math {
+                    tex: t.into_string(),
+                    display: false,
+                }),
+                Event::DisplayMath(t) => out.push(Inline::Math {
+                    tex: t.into_string(),
+                    display: true,
+                }),
                 Event::FootnoteReference(r) => push_text(&mut out, &format!("[^{r}]")),
                 Event::Code(c) => out.push(Inline::Code(c.into_string())),
                 Event::SoftBreak => out.push(Inline::SoftBreak),
@@ -307,6 +318,7 @@ impl Builder<'_> {
                     | Event::Code(_)
                     | Event::InlineHtml(_)
                     | Event::InlineMath(_)
+                    | Event::DisplayMath(_)
                     | Event::FootnoteReference(_)
                     | Event::SoftBreak
                     | Event::HardBreak
@@ -323,6 +335,19 @@ impl Builder<'_> {
             )
         })
     }
+}
+
+/// A paragraph, unless all it holds is one `$$ ... $$`: then it is an
+/// equation on its own, a block of its kind.
+fn paragraph(inlines: Vec<Inline>) -> BlockKind {
+    let mut content = inlines.iter().filter(|i| {
+        !matches!(i, Inline::SoftBreak | Inline::HardBreak)
+            && !matches!(i, Inline::Text(t) if t.trim().is_empty())
+    });
+    if let (Some(Inline::Math { tex, display: true }), None) = (content.next(), content.next()) {
+        return BlockKind::Math(tex.clone());
+    }
+    BlockKind::Paragraph(inlines)
 }
 
 /// `[[Target]]` and `[[Target|shown]]` in plain text become links to
@@ -581,6 +606,42 @@ mod tests {
         let k = kinds("---\ntitle: x\n---\n\n# H\n");
         assert_eq!(k[0], BlockKind::Metadata("title: x\n".into()));
         assert!(matches!(k[1], BlockKind::Heading { level: 1, .. }));
+    }
+
+    #[test]
+    fn math_inline_and_on_its_own() {
+        let k = kinds("Energy $E = mc^2$, and money: $5 and $10.\n");
+        assert_eq!(
+            k[0],
+            BlockKind::Paragraph(vec![
+                Inline::Text("Energy ".into()),
+                Inline::Math {
+                    tex: "E = mc^2".into(),
+                    display: false
+                },
+                Inline::Text(", and money: $5 and $10.".into()),
+            ]),
+            "a dollar before a digit is money, not math"
+        );
+
+        // `$$` alone in a paragraph, on one line or several, is a block.
+        let k = kinds("$$\\frac{1}{2}$$\n\n$$\nx^2\n$$\n");
+        assert_eq!(k[0], BlockKind::Math("\\frac{1}{2}".into()));
+        assert_eq!(k[1], BlockKind::Math("\nx^2\n".into()));
+
+        // Mid-sentence it stays inline, marked as display.
+        let k = kinds("so $$x$$ holds\n");
+        assert!(matches!(
+            &k[0],
+            BlockKind::Paragraph(i) if i.contains(&Inline::Math { tex: "x".into(), display: true })
+        ));
+
+        // In a list item, too.
+        let k = kinds("- $$a+b$$\n");
+        let BlockKind::List { items, .. } = &k[0] else {
+            panic!("a list: {k:?}");
+        };
+        assert_eq!(items[0].blocks[0].kind, BlockKind::Math("a+b".into()));
     }
 
     #[test]

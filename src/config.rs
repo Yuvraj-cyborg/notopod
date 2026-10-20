@@ -17,6 +17,12 @@
 //!
 //! [keys]
 //! vim = false             # vim keys in the editor
+//!
+//! [manim]
+//! enabled = false         # run ```manim blocks with your manim (it executes their Python)
+//! command = "manim"       # or "uv run manim", "python -m manim", ...
+//! quality = "medium"      # low | medium | high
+//! timeout = 60            # seconds one scene may take
 //! ```
 //!
 //! User themes live in a `themes/` directory next to the config file, one
@@ -45,6 +51,23 @@ pub struct Config {
     /// Keyboard options.
     #[serde(default)]
     pub keys: Keys,
+    /// Real Manim scenes.
+    #[serde(default)]
+    pub manim: ManimSection,
+}
+
+/// The `[manim]` section.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManimSection {
+    /// Run ```` ```manim ```` blocks. Off unless set: it runs their Python.
+    pub enabled: Option<bool>,
+    /// The program and its first arguments, split on spaces.
+    pub command: Option<String>,
+    /// `low`, `medium` or `high` (or `l`, `m`, `h`).
+    pub quality: Option<String>,
+    /// Seconds one scene may take.
+    pub timeout: Option<u64>,
 }
 
 /// The `[keys]` section.
@@ -143,6 +166,55 @@ pub fn resolve_graphics(flag: Option<graphics::Mode>, config: &Config) -> Result
 /// Whether vim keys are on: `--vim` wins, then `[keys] vim`, then off.
 pub fn resolve_vim(flag: bool, config: &Config) -> bool {
     flag || config.keys.vim.unwrap_or(false)
+}
+
+/// A renderer for ```` ```manim ```` blocks when `--manim` or
+/// `[manim] enabled = true` allows them to run, `None` otherwise. Frames
+/// are kept in `$XDG_CACHE_HOME/notopod/manim` (`~/.cache/notopod/manim`).
+pub fn resolve_manim(flag: bool, config: &Config) -> Result<Option<manim::Manim>> {
+    let section = &config.manim;
+    if !(flag || section.enabled.unwrap_or(false)) {
+        return Ok(None);
+    }
+    let cache = cache_dir().map_or_else(
+        || env::temp_dir().join("notopod-manim"),
+        |d| d.join("manim"),
+    );
+    let mut m = manim::Config::new(cache);
+    if let Some(command) = &section.command {
+        let words: Vec<String> = command.split_whitespace().map(str::to_owned).collect();
+        if words.is_empty() {
+            bail!("config: manim.command is empty");
+        }
+        m.command = words;
+    }
+    if let Some(q) = &section.quality {
+        m.quality = match q.trim().to_ascii_lowercase().as_str() {
+            "l" | "low" => 'l',
+            "m" | "medium" => 'm',
+            "h" | "high" => 'h',
+            other => bail!("config: manim.quality = {other:?} (expected low, medium or high)"),
+        };
+    }
+    if let Some(secs) = section.timeout {
+        if secs == 0 {
+            bail!("config: manim.timeout must be at least 1 second");
+        }
+        m.timeout = std::time::Duration::from_secs(secs);
+    }
+    Ok(Some(manim::Manim::new(m)))
+}
+
+fn cache_dir() -> Option<PathBuf> {
+    if let Some(xdg) = env::var_os("XDG_CACHE_HOME").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(xdg).join("notopod"));
+    }
+    if cfg!(windows) {
+        if let Some(local) = env::var_os("LOCALAPPDATA") {
+            return Some(PathBuf::from(local).join("notopod").join("cache"));
+        }
+    }
+    env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache").join("notopod"))
 }
 
 /// Loads one theme by name or path, the same way [`resolve_theme`] does.

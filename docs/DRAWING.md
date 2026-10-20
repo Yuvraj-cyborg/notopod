@@ -25,6 +25,10 @@ the text around it.
 | `line A -> B -> C` | A line through points; `->`, `<-`, `<->` put arrowheads on the ends, `--` none |
 | `arrow A B` | Short for `line A -> B` |
 | `text X,Y "words"` | Free text |
+| `axes X,Y WxH x=A..B y=C..D` | A pair of axes over those ranges (default `-5..5` and `-3..3`) |
+| `plane X,Y WxH ...` | The same axes with a grid behind them |
+| `plot "expr" "label" x=A..B` | A function of `x` on the closest axes above it; the label and the range are optional |
+| `math X,Y "tex"` | A typeset formula, its top-left at X,Y |
 | `size WxH` | Minimum canvas size (it always grows to fit) |
 | `"label"` | On a box: centred inside it. On a line: on its midpoint |
 | `fill`, `dashed`, `round`, `color=red` | Hatch the inside, dash the stroke, round the corners, colour it |
@@ -38,6 +42,32 @@ A line that ends inside a box stops at the box's border, so
 `line 5,3 -> 30,3` from inside "Parser" to inside "Renderer" joins the
 two exactly. Lines that do not parse are left alone, never rewritten —
 your file always round-trips.
+
+## Plots and formulas
+
+`axes`, `plot` and `math` are named after the Manim objects they copy:
+
+    ```draw
+    plane 0,0 46x14 x=-2pi..2pi y=-1.5..1.5 color=muted
+    plot "sin(x)" "\sin x" color=yellow
+    plot "x^2/4" x=-2..2 dashed
+    math 50,4 "e^{i\pi} + 1 = 0"
+    ```
+
+An expression is written the way maths is written: `2x` and `3sin(x)`
+multiply, `sin x` is `sin(x)`, `-x^2` is `-(x^2)`, `|x|` is the absolute
+value, and `π`, `**` and a leading `y =` are fine. There are `sin cos
+tan`, their `a`- and `arc`- inverses and `h` versions, `exp ln log sqrt
+abs floor ceil sign`, and the constants `pi tau e`. Range ends are
+expressions too, so `x=-2pi..2pi` works.
+
+A curve breaks where the function does — `tan x` has no line across its
+asymptotes — and stops at the edge of its axes instead of running off
+them. A plot's label sits at the end of its curve and is set as maths,
+like the text of `math`; inside the quotes only `\"` and `\\` are escapes,
+so LaTeX is written as it is. Moving the axes moves their plots with them.
+
+In braille, curves are dots and formulas are Unicode (`e^(iπ) + 1 = 0`).
 
 ## Drawing with the keyboard
 

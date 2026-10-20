@@ -80,6 +80,9 @@ pub enum BlockKind {
     Html(String),
     /// YAML front matter between `---` fences at the top of the file.
     Metadata(String),
+    /// An equation on its own: `$$ ... $$` alone in a paragraph. The
+    /// LaTeX between the dollar signs, verbatim.
+    Math(String),
 }
 
 /// One entry in a list.
@@ -133,6 +136,14 @@ pub enum Inline {
         /// Alternative text.
         alt: String,
     },
+    /// `$x^2$`, or `$$x^2$$` in the middle of a sentence. The LaTeX,
+    /// verbatim.
+    Math {
+        /// The formula.
+        tex: String,
+        /// Written with double dollar signs.
+        display: bool,
+    },
     /// A line break inside a paragraph that renders as a space.
     SoftBreak,
     /// A forced line break (two trailing spaces or a backslash).
@@ -150,7 +161,7 @@ impl Inline {
     fn push_plain(inlines: &[Inline], out: &mut String) {
         for inline in inlines {
             match inline {
-                Inline::Text(t) | Inline::Code(t) => out.push_str(t),
+                Inline::Text(t) | Inline::Code(t) | Inline::Math { tex: t, .. } => out.push_str(t),
                 Inline::Emphasis(inner)
                 | Inline::Strong(inner)
                 | Inline::Strikethrough(inner)

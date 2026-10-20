@@ -21,7 +21,7 @@ press Ctrl+D and you can redraw it with single keys without leaving the note.
 
 ## What it is
 
-A Markdown editor for the terminal. One binary, no runtime, about 2 MB.
+A Markdown editor for the terminal. One binary, no runtime, about 4 MB.
 
 - **Formatted as you write.** Headings, lists, tables and tasks render in
   place. The block your cursor is in shows its raw Markdown and snaps back
@@ -31,6 +31,9 @@ A Markdown editor for the terminal. One binary, no runtime, about 2 MB.
   strokes that wobble like a quick pen sketch, hatched fills, labels in
   Excalifont — painted over the cells the block occupies. Terminals without
   the kitty graphics protocol get the same shapes in braille dots.
+- **Equations, typeset.** `$$…$$` is set in KaTeX's fonts as a picture,
+  a drawing can plot functions on axes, and if you have Manim, a
+  ` ```manim ` block shows the scene it draws.
 - **A folder, not a file.** Tabs, a file panel, `[[links]]` you can follow,
   and a graph of how your notes connect.
 - **Yours to keep.** Plain `.md` files, and a drawing is a short, readable
@@ -50,7 +53,7 @@ goes, or to pin a version:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Yuvraj-cyborg/notopod/main/install.sh \
-  | sh -s -- --to /usr/local/bin --version v0.3.0
+  | sh -s -- --to /usr/local/bin --version v0.4.0
 ```
 
 If you would rather not pipe the internet into a shell — fair — the script
@@ -176,6 +179,67 @@ language and the rest of the keys are in
 [docs/DRAWING.md](docs/DRAWING.md) — this project's logo is one of these
 blocks.
 
+## Equations and plots
+
+Math is written the way it is everywhere else:
+
+    The roots are $x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$, and
+
+    $$\int_0^\infty e^{-x^2}\,dx = \frac{\sqrt\pi}{2}$$
+
+A `$$…$$` on its own line, or a ` ```math ` block, becomes a picture: laid
+out by [RaTeX](https://github.com/erweixin/RaTeX), drawn in KaTeX's fonts.
+Math inside a sentence stays text, so the line still reads as a line:
+`x = (−b ± √(b²−4ac))/(2a)`. Where there are no pictures, display math is
+that same text, centred. `$5 and $10` is still money.
+
+A drawing takes three more statements, borrowed from
+[Manim](https://www.manim.community):
+
+    ```draw
+    plane 0,0 46x14 x=-2pi..2pi y=-1.5..1.5 color=muted
+    plot "sin(x)" "\sin x" color=yellow
+    plot "cos(x)" "\cos x" color=cyan dashed
+    math 53,3 "e^{i\pi} + 1 = 0" color=magenta
+    math 53,8 "\int_0^{\pi} \sin x \, dx = 2"
+    ```
+
+![The block above, rendered: a grid with sin and cos curves labelled in typeset math, and two formulas beside it](docs/plot.png)
+
+`axes` (or `plane`, which adds the grid) sets the ranges, `plot` draws a
+function of `x` on the axes above it, `math` puts a formula anywhere.
+Ticks and their numbers place themselves.
+
+### Real Manim
+
+For anything those cannot say, a ` ```manim ` block holds Manim code — a
+whole `Scene`, or just the body of `construct`:
+
+    ```manim
+    circle = Circle(color=BLUE).set_fill(BLUE, opacity=0.4)
+    square = Square(color=YELLOW).rotate(PI / 4).next_to(circle, RIGHT)
+    self.add(circle, square, Text("hello").next_to(circle, DOWN))
+    ```
+
+notopod runs your `manim` in the background and shows the scene's last
+frame in place of the code. Typing never waits for it, and frames are
+cached, so a note you open again shows its scenes at once.
+
+It is off until you turn it on, because it runs the Python in the note.
+Only turn it on for notes you trust: `--manim` for one run, or
+
+```toml
+[manim]
+enabled = true
+command = "manim"    # or "uv run manim", or a full path
+quality = "medium"   # low, medium or high
+timeout = 60         # seconds per scene
+```
+
+Manim itself is `uv tool install manim` or `pip install manim`;
+`MathTex` and `Tex` also need LaTeX. Until it is on, or in a terminal
+without pictures, the block shows as code.
+
 ## Links and the graph
 
 Notes link the way Obsidian's do: `[[Plan]]` finds `Plan.md` anywhere under
@@ -208,6 +272,9 @@ mode = "auto"        # auto | kitty | braille
 
 [keys]
 vim = false
+
+[manim]
+enabled = false      # run ```manim blocks (see above)
 ```
 
 `default` borrows your terminal's own colours, so notopod looks like the
@@ -228,14 +295,17 @@ because there is no selection yet.
 
 Selecting text (and with it vim's visual mode), ` ```mermaid ` blocks,
 search across notes, syntax colours inside code blocks, Sixel and iTerm2
-pictures, export to PNG or SVG.
+pictures, export to PNG or SVG, Manim scenes that move (you get the last
+frame).
 
 ## The code
 
 One Cargo workspace: the `notopod` binary at the root and library crates
-under `lib/` — `syntax` parses, `canvas` draws, `graphics` puts pictures on
-the terminal, `render` styles and wraps, `theme` colours, `editor` holds
-the text, `notes` finds the links, `tui` runs the screen.
+under `lib/` — `syntax` parses, `canvas` draws, `math` typesets, `manim`
+runs Manim, `graphics` puts pictures on the terminal, `render` styles and
+wraps, `theme` colours, `editor` holds the text, `notes` finds the links,
+`tui` runs the screen. `cargo build --no-default-features` leaves the
+typesetting out: a 2 MB binary that writes equations as Unicode.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how they fit
 together, and [CONTRIBUTING.md](CONTRIBUTING.md) has the checks and the
 branch rules — work happens on `dev`, and `main` only receives releases.

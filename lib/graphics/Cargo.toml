@@ -10,10 +10,13 @@ publish = false
 
 [dependencies]
 canvas.workspace = true
+manim.workspace = true
+math.workspace = true
 render.workspace = true
 theme.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true
+tiny-skia.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 rustix.workspace = true

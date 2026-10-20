@@ -1,13 +1,16 @@
-//! How ```` ```draw ```` blocks get onto the screen.
+//! How ```` ```draw ```` blocks and equations get onto the screen.
 //!
 //! The renderer knows nothing about terminals; it asks a [`Drawings`]
-//! for the rows a drawing takes. [`Braille`] draws dot art and works
-//! everywhere. The `graphics` crate provides one that shows real pictures
-//! where the terminal can.
+//! for the rows a drawing or a display equation takes. [`Braille`] draws
+//! dot art and spells equations out in Unicode, and works everywhere. The
+//! `graphics` crate provides one that shows real pictures where the
+//! terminal can.
 
 use canvas::{Drawing, Overlay};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use theme::Theme;
+
+use crate::wrap::wrap_spans;
 
 /// Turns a drawing into screen rows.
 pub trait Drawings {
@@ -29,6 +32,43 @@ pub trait Drawings {
         }
         self.draw(&drawing, theme, max_width, None)
     }
+
+    /// Rows for a display equation, centred in `max_width` columns. The
+    /// default spells it out in Unicode.
+    fn math(&mut self, tex: &str, theme: &Theme, max_width: usize) -> Vec<Line<'static>> {
+        math_text(tex, theme, max_width)
+    }
+
+    /// Rows for a ```` ```manim ```` block. The default shows its code:
+    /// running Python from a note is something the user switches on.
+    fn manim(&mut self, src: &str, theme: &Theme, max_width: usize) -> Vec<Line<'static>> {
+        crate::block::manim_text(src, MANIM_OFF, max_width, theme)
+    }
+}
+
+/// What a ```` ```manim ```` block says when rendering it is off.
+pub const MANIM_OFF: &str = "manim: off. `[manim] enabled = true` or --manim runs this block";
+
+/// A display equation as centred lines of Unicode, for where it cannot be
+/// a picture. Nothing for an empty one.
+pub fn math_text(tex: &str, theme: &Theme, max_width: usize) -> Vec<Line<'static>> {
+    let text = math::to_unicode(tex);
+    if text.is_empty() {
+        return Vec::new();
+    }
+    let width = max_width.max(1);
+    wrap_spans(vec![Span::styled(text, theme.math)], width)
+        .into_iter()
+        .map(|line| {
+            let pad = width.saturating_sub(line.width()) / 2;
+            if pad == 0 {
+                return line;
+            }
+            let mut spans = vec![Span::raw(" ".repeat(pad))];
+            spans.extend(line.spans);
+            Line::from(spans)
+        })
+        .collect()
 }
 
 /// Drawings as braille dot art, 2×4 dots per cell.

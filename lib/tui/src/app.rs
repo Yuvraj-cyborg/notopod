@@ -148,8 +148,9 @@ impl Parsed {
 }
 
 struct CachedView {
-    /// Buffer version, cursor, width, preview flag, canvas generation.
-    key: (u64, Position, usize, bool, Option<u64>),
+    /// Buffer version, cursor, width, preview flag, canvas generation, and
+    /// the generation of what was rendered in the background.
+    key: (u64, Position, usize, bool, Option<u64>, u64),
     view: View,
 }
 
@@ -382,6 +383,8 @@ impl App {
                 width,
                 self.preview,
                 canvas_gen,
+                // A manim scene finishing changes what its block shows.
+                self.graphics.generation(),
             )
         };
         let stale = self.tabs[self.active]
@@ -1517,6 +1520,72 @@ pub(crate) mod tests {
             Some(dir.path().join("three.md").as_path())
         );
         assert_eq!(a.tabs()[2].name(), "three.md");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_manim_scene_appears_once_its_background_render_finishes() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Stands in for manim: a short pause, then a frame where manim
+        // leaves one.
+        let frame = canvas::render_image(
+            &canvas::parse("rect 0,0 6x3\n"),
+            &Theme::default(),
+            canvas::CellSize::new(8, 16),
+            (255, 255, 255),
+            80,
+            None,
+        )
+        .expect("a picture")
+        .to_png();
+        std::fs::write(dir.path().join("frame.png"), frame).expect("write");
+        let fake = dir.path().join("manim");
+        std::fs::write(
+            &fake,
+            format!(
+                "#!/bin/sh\nsleep 0.2\nmkdir -p media/images/scene && cp {} media/images/scene/frame.png\n",
+                dir.path().join("frame.png").display()
+            ),
+        )
+        .expect("write");
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let runner = manim::Manim::new(manim::Config {
+            command: vec![fake.display().to_string()],
+            ..manim::Config::new(dir.path().join("cache"))
+        });
+        let graphics =
+            Graphics::kitty(canvas::CellSize::new(8, 16), (255, 255, 255)).with_manim(Some(runner));
+        let mut a = App::new(
+            Editor::from_text("# Scene\n\n```manim\nself.add(Square())\n```\n"),
+            Theme::default(),
+        )
+        .with_graphics(graphics);
+
+        let text = |a: &mut App| {
+            a.ensure_view(60)
+                .rows
+                .iter()
+                .map(|r| r.line.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert!(
+            text(&mut a).contains("rendering with manim"),
+            "a placeholder first"
+        );
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while a.graphics.generation() == 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(a.graphics.generation() > 0, "the render finished");
+        let shown = text(&mut a);
+        assert!(
+            shown.contains(graphics::kitty::PLACEHOLDER),
+            "the picture, without a keystroke to prompt it:\n{shown}"
+        );
+        assert!(!shown.contains("rendering with manim"));
     }
 
     #[test]

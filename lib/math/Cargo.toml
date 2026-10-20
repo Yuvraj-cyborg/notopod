@@ -1,0 +1,30 @@
+[package]
+name = "math"
+description = "Equations for notopod: LaTeX math typeset with RaTeX and drawn with tiny-skia, or spelled out in Unicode"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+default = ["typeset"]
+# Real typesetting: TeX layout and the KaTeX fonts, about 2.6 MB of the
+# binary. Without it every formula is spelled out in Unicode instead.
+typeset = [
+    "dep:ab_glyph",
+    "dep:ratex-layout",
+    "dep:ratex-parser",
+    "dep:ratex-types",
+]
+
+[dependencies]
+tiny-skia.workspace = true
+ab_glyph = { workspace = true, optional = true }
+ratex-layout = { workspace = true, optional = true }
+ratex-parser = { workspace = true, optional = true }
+ratex-types = { workspace = true, optional = true }
+
+[lints]
+workspace = true

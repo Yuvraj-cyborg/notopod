@@ -14,8 +14,9 @@ parts of a functional language a parser actually needs.
 
 **Markdown, not a new format.** A note is CommonMark plus tables, task
 lists, strikethrough and front matter. Everything notopod adds lives
-inside fenced code blocks with a language tag (` ```draw ` today,
-` ```mermaid ` and others later), so a note still opens everywhere else
+inside fenced code blocks with a language tag (` ```draw `, ` ```math `
+and ` ```manim ` today, ` ```mermaid ` later) or in the `$…$` math that
+GitHub and Obsidian already read, so a note still opens everywhere else
 and shows the block's text where notopod would show a picture. The
 identity of the product is in the block languages, not in the container.
 
@@ -62,17 +63,20 @@ nothing about images.
 3. `tui::view` walks the buffer line by line. A block that does not
    contain the cursor is handed to `render` and becomes formatted rows; a
    block that does is emitted as raw source rows. `render` hands
-   ` ```draw ` blocks to a `Drawings` implementation: `graphics::Graphics`
-   in the editor, which paints a picture with `canvas::render_image` and
-   returns placeholder rows, or `render::Braille` where pictures are not
-   possible.
+   ` ```draw `, display math and ` ```manim ` blocks to a `Drawings`
+   implementation: `graphics::Graphics` in the editor, which paints a
+   picture (`canvas::render_image`, `math::render`, a frame from `manim`)
+   and returns placeholder rows, or `render::Braille` where pictures are
+   not possible.
 4. `tui::ui` writes the pending image escape codes, then paints the rows
    and the status bar with ratatui, using the `theme`.
 
 Parsing happens on every change. That is deliberate: a note is small,
 the parser takes well under a millisecond for typical sizes, and it keeps
 the design simple. The parse is cached by `Editor::version()` and the row
-layout by `(version, cursor, width, preview, canvas generation)`.
+layout by `(version, cursor, width, preview, canvas generation, graphics
+generation)` — the last one moves when a Manim frame arrives, so the
+picture replaces its placeholder without a keystroke.
 
 ## Crates
 
@@ -83,18 +87,26 @@ under `lib/` with short names and `publish = false`.
 |---|---|---|
 | `syntax` | pulldown-cmark | `Document`, `Block`, `Inline`; `parse()`; `LineIndex` (byte offset to line). No terminal code at all. |
 | `theme` | ratatui (types), serde, toml | `Theme`: every style, derived from a nine colour `Palette`; the theme file format; built-in themes as embedded TOML. |
-| `canvas` | theme, tiny-skia, ab_glyph, png, ratatui (types) | The ` ```draw ` language (`parse`, `to_source`); `render_image` (pixels: `sketch.rs` rough strokes, `text.rs` Excalifont labels, `pixel.rs` layout) and `render` (braille: `raster.rs`, `rough.rs`), both with an editing `Overlay`. |
-| `graphics` | canvas, render, theme, crossterm, rustix | `Graphics`: probes the terminal (kitty graphics, cell size, fg/bg colours), sends PNGs with the kitty protocol, caches them by content, returns placeholder rows; falls back to braille. |
-| `render` | syntax, canvas, theme | Block and inline rendering to `ratatui::text::Line`; word wrap; ANSI serialisation for stdout; the `Drawings` trait. |
+| `math` | tiny-skia; RaTeX and ab_glyph behind `typeset` | `layout`, `render` and `measure` for TeX: RaTeX's layout drawn with our own tiny-skia, in KaTeX's fonts (vendored, OFL 1.1); `to_unicode`, the text form used inline and without pictures. |
+| `manim` | png | `Manim`: renders ` ```manim ` blocks with the user's `manim` on one worker thread, one scene at a time with a timeout; frames cropped and cached on disk and in memory. |
+| `canvas` | math, theme, tiny-skia, ab_glyph, png, ratatui (types) | The ` ```draw ` language (`parse`, `to_source`); `render_image` (pixels: `sketch.rs` rough strokes, `text.rs` Excalifont labels, `pixel.rs` layout) and `render` (braille: `raster.rs`, `rough.rs`), both with an editing `Overlay`; `expr` and `plot` for `axes` and `plot`. |
+| `graphics` | canvas, math, manim, render, theme, crossterm, rustix | `Graphics`: probes the terminal (kitty graphics, cell size, fg/bg colours), sends PNGs with the kitty protocol, caches them by content, returns placeholder rows; falls back to braille. |
+| `render` | syntax, canvas, math, theme | Block and inline rendering to `ratatui::text::Line`; word wrap; ANSI serialisation for stdout; the `Drawings` trait. |
 | `editor` | ropey | `Editor`: cursor, movement, editing, undo/redo, search, atomic save, `replace_lines`, character ranges (`slice`, `delete_range`, `line_range`). Knows nothing about Markdown except the list-continuation rules in `smart.rs`. |
 | `notes` | canvas | The notes under a folder and the links between them: `scan` (reads each file once, picks out `[[wikilinks]]` and `[text](note.md)`), `Graph`, and `Graph::drawing`, a force-directed layout into a `canvas::Drawing`. |
 | `tui` | all of the above, crossterm | `App`: tabs, the mode state machine (edit / find / save-as / open / confirm / canvas) and what has the keyboard (note / file panel / graph); `view` (rows), `ui` (draw), `canvas_mode`, `files` (the panel), `graph_view`, `links` (the link under the cursor), `vim` (vim keys), `picker` (the theme screen). |
-| `notopod` | tui, graphics, notes, render, theme, clap | The command: `notopod [FILE...]`, `render`, `graph`, `themes`, `config`; reads and writes the config file; `--theme`, `--graphics`, `--vim`. |
+| `notopod` | tui, graphics, manim, notes, render, theme, clap | The command: `notopod [FILE...]`, `render`, `graph`, `themes`, `config`; reads and writes the config file; `--theme`, `--graphics`, `--vim`, `--manim`. |
 
-Dependencies point one way: `notopod -> tui -> {graphics, notes, render,
-canvas, editor, syntax, theme}`, `graphics -> {canvas, render, theme}`,
-`render -> {canvas, syntax, theme}`, `notes -> canvas`, `canvas -> theme`.
-`syntax`, `editor` and `theme` depend on nothing else in the workspace.
+Dependencies point one way: `notopod -> tui -> {graphics, manim, notes,
+render, canvas, editor, syntax, theme}`, `graphics -> {canvas, math,
+manim, render, theme}`, `render -> {canvas, math, syntax, theme}`, `notes
+-> canvas`, `canvas -> {math, theme}`. `syntax`, `editor`, `theme`, `math`
+and `manim` depend on nothing else in the workspace.
+
+The binary's `math` feature (on by default) turns on `math/typeset`.
+Without it `math` keeps only `to_unicode`, RaTeX and the fonts are not
+linked, and the binary is about half the size: equations are text
+everywhere, as they are in braille.
 
 The parser crate is called `syntax`, not `core`, on purpose: a crate
 named `core` shadows Rust's built-in `core` in every crate that depends
@@ -162,6 +174,40 @@ before ratatui writes the frame, so the image exists when the cells that
 show it arrive. The cache holds 32 pictures; evictions and shutdown send
 `a=d,d=I` so the terminal frees the memory. Pictures scroll, clip and
 redraw for free because to ratatui they are text.
+
+### Equations
+
+`syntax` parses with pulldown-cmark's math extension, so `$5 and $10`
+stays money. Display math alone in a paragraph becomes `BlockKind::Math`;
+anything else is `Inline::Math`, which `render` writes with
+`math::to_unicode` in the theme's `math` style, because it shares a row
+with text.
+
+`math::render` parses with `ratex-parser`, lays out with `ratex-layout`
+and walks the resulting display list itself: glyph outlines from the
+vendored KaTeX fonts through ab_glyph, rules and paths through tiny-skia.
+Only RaTeX's layout is used, not its renderer, so there is one rasteriser
+in the binary. `Graphics` sizes the picture in whole cells, centres it,
+and caches it like a drawing. A `math` statement in a drawing goes
+through the same function, sized to the cells `math::measure` says it
+needs, so its bounds, hit test and picture agree.
+
+### Manim
+
+A ` ```manim ` block is Python, so notopod does not try to understand it.
+`manim::script` makes it a file (adding `from manim import *`, wrapping a
+bare body in a `Scene`), and the worker runs `manim render
+--save_last_frame --transparent` in a fresh directory under the cache,
+crops the frame to what was drawn, and keeps it as
+`<hash of text and quality>.png`. `Manim::state` never blocks: a frame
+that is not there yet is queued and reported as `Running`; when the
+worker finishes it bumps `generation`, which the TUI's view cache keys
+on. `notopod render` calls `wait` instead, since it prints once.
+
+It is off unless `--manim` or `[manim] enabled` says otherwise, and off
+means the crate is never asked for anything: the block is its code and a
+note. A failure is shown as Python's last error line, and is not retried
+until the block changes or notopod starts again.
 
 ### The graph of notes
 
@@ -247,8 +293,9 @@ foreground the terminal reported (or a light grey on a dark background).
 
 The binary owns configuration (`src/config.rs`): `~/.config/notopod/config.toml`
 (or `$NOTOPOD_CONFIG`, or `$XDG_CONFIG_HOME/notopod/config.toml`) with
-`theme = "..."`, a `[canvas] roughness` override, `[graphics] mode` and
-`[keys] vim`. `--theme`, `--graphics` and `--vim` win over the file. User themes are
+`theme = "..."`, a `[canvas] roughness` override, `[graphics] mode`,
+`[keys] vim` and `[manim]`. `--theme`, `--graphics`, `--vim` and
+`--manim` win over the file. User themes are
 `themes/<name>.toml` next to the config file.
 
 ## Other decisions worth knowing

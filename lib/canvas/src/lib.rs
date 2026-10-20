@@ -26,9 +26,11 @@
 //! The editor uses [`Overlay`] to show a cursor, a highlighted shape and
 //! a shape being placed, and [`to_source`] to write the drawing back.
 
+pub mod expr;
 mod model;
 mod parse;
 mod pixel;
+mod plot;
 mod raster;
 mod render;
 mod rough;

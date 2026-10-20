@@ -11,6 +11,9 @@
 //! line 2,10 -> 10,10 -> 10,14 <-> 30,14
 //! arrow 5,5 9,9                 # same as: line 5,5 -> 9,9
 //! text 5,12 "free text" color=muted
+//! axes 0,16 40x12 x=-pi..pi y=-1..1 grid   # `plane` is axes with a grid
+//! plot "sin(x)" "\sin x" color=yellow      # on the axes above it
+//! math 42,18 "e^{i\pi} + 1 = 0"
 //! # a comment
 //! ```
 //!
@@ -18,6 +21,8 @@
 //! counted from the top-left of the block. Connectors between points are
 //! `->`, `<-`, `<->` or `--` (no head). Anything in quotes is a label.
 //! Flags are `fill`, `dashed`, `round` and `color=NAME`, in any order.
+//! Ranges are `a..b`, each end an expression without `x`. Inside quotes
+//! only `\"` and `\\` are escapes, so LaTeX is written as it is.
 //!
 //! Lines that do not parse are kept as [`Shape::Raw`] and written back
 //! unchanged, so a hand-edited block is never damaged by the editor.
@@ -100,6 +105,44 @@ pub fn to_source(drawing: &Drawing) -> String {
                 push_label(&mut out, Some(text));
                 push_attrs(&mut out, attrs, false);
             }
+            Shape::Axes {
+                rect,
+                x,
+                y,
+                grid,
+                attrs,
+            } => {
+                let _ = write!(out, "axes {},{} {}x{}", rect.x, rect.y, rect.w, rect.h);
+                if let Some(x) = x {
+                    let _ = write!(out, " x={x}");
+                }
+                if let Some(y) = y {
+                    let _ = write!(out, " y={y}");
+                }
+                if *grid {
+                    out.push_str(" grid");
+                }
+                push_attrs(&mut out, attrs, false);
+            }
+            Shape::Plot {
+                expr,
+                x,
+                label,
+                attrs,
+            } => {
+                out.push_str("plot ");
+                out.push_str(&quote(expr));
+                if let Some(x) = x {
+                    let _ = write!(out, " x={x}");
+                }
+                push_label(&mut out, label.as_deref());
+                push_attrs(&mut out, attrs, false);
+            }
+            Shape::Math { at, tex, attrs } => {
+                let _ = write!(out, "math {},{} ", at.x, at.y);
+                out.push_str(&quote(tex));
+                push_attrs(&mut out, attrs, false);
+            }
             Shape::Raw(line) => out.push_str(line),
         }
         out.push('\n');
@@ -129,14 +172,17 @@ fn push_attrs(out: &mut String, attrs: &Attrs, allow_round: bool) {
     }
 }
 
-/// Quotes a label: `"` and `\` are escaped.
+/// Quotes a label. `"` is escaped; a `\` is doubled only where it would
+/// otherwise be read as an escape — before `"`, before another `\`, or at
+/// the end — so LaTeX such as `\frac{a}{b}` is written as it reads.
 pub fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
-    for ch in s.chars() {
+    let mut chars = s.chars().peekable();
+    while let Some(ch) = chars.next() {
         match ch {
             '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
+            '\\' if matches!(chars.peek(), None | Some('"' | '\\')) => out.push_str("\\\\"),
             '\n' => out.push(' '),
             c => out.push(c),
         }
@@ -177,7 +223,12 @@ fn tokenize(line: &str) -> Option<Vec<Token>> {
                 match chars.next() {
                     None => return None, // unterminated quote
                     Some('"') => break,
-                    Some('\\') => s.push(chars.next()?),
+                    // Only `\"` and `\\` are escapes; any other backslash
+                    // is itself, which is what LaTeX in a label needs.
+                    Some('\\') => match chars.peek() {
+                        Some('"' | '\\') => s.push(chars.next()?),
+                        _ => s.push('\\'),
+                    },
                     Some(ch) => s.push(ch),
                 }
             }
@@ -220,9 +271,104 @@ fn parse_line(line: &str) -> Statement {
         "line" => parse_polyline(rest, false),
         "arrow" => parse_polyline(rest, true),
         "text" => parse_text(rest),
+        "axes" => parse_axes(rest, false),
+        // Manim's `NumberPlane`: axes with the grid drawn.
+        "plane" => parse_axes(rest, true),
+        "plot" | "graph" => parse_plot(rest),
+        "math" | "tex" => parse_math(rest),
         _ => None,
     };
     result.unwrap_or(Statement::Unknown)
+}
+
+/// The `x=a..b`, `y=a..b` and `grid` words of an `axes` or `plot`, and
+/// whatever else followed them.
+struct Ranges {
+    x: Option<String>,
+    y: Option<String>,
+    grid: bool,
+    rest: Vec<Token>,
+}
+
+/// Takes the ranges and `grid` out of `tail`, checking that each range
+/// reads as two numbers in order. `None` for a range that does not.
+fn take_ranges(tail: &[Token]) -> Option<Ranges> {
+    let mut out = Ranges {
+        x: None,
+        y: None,
+        grid: false,
+        rest: Vec::new(),
+    };
+    for token in tail {
+        match token {
+            Token::Word(w) if w == "grid" => out.grid = true,
+            Token::Word(w) if w.starts_with("x=") || w.starts_with("y=") => {
+                let value = &w[2..];
+                crate::expr::range(value)?;
+                if w.starts_with('x') {
+                    out.x = Some(value.to_owned());
+                } else {
+                    out.y = Some(value.to_owned());
+                }
+            }
+            other => out.rest.push(other.clone()),
+        }
+    }
+    Some(out)
+}
+
+fn parse_axes(rest: &[Token], plane: bool) -> Option<Statement> {
+    let [Token::Word(pos), Token::Word(size), tail @ ..] = rest else {
+        return None;
+    };
+    let at = parse_point(pos)?;
+    let (w, h) = parse_size(size)?;
+    let ranges = take_ranges(tail)?;
+    let (label, attrs) = parse_tail(&ranges.rest, false)?;
+    if label.is_some() {
+        return None;
+    }
+    Some(Statement::Shape(Shape::Axes {
+        rect: Rect::new(at.x, at.y, w, h),
+        x: ranges.x,
+        y: ranges.y,
+        grid: ranges.grid || plane,
+        attrs,
+    }))
+}
+
+fn parse_plot(rest: &[Token]) -> Option<Statement> {
+    let [Token::Quoted(expr), tail @ ..] = rest else {
+        return None;
+    };
+    crate::expr::Expr::parse(expr).ok()?;
+    let ranges = take_ranges(tail)?;
+    if ranges.y.is_some() || ranges.grid {
+        return None;
+    }
+    let (label, attrs) = parse_tail(&ranges.rest, false)?;
+    Some(Statement::Shape(Shape::Plot {
+        expr: expr.clone(),
+        x: ranges.x,
+        label,
+        attrs,
+    }))
+}
+
+fn parse_math(rest: &[Token]) -> Option<Statement> {
+    let [Token::Word(pos), Token::Quoted(tex), tail @ ..] = rest else {
+        return None;
+    };
+    let at = parse_point(pos)?;
+    let (label, attrs) = parse_tail(tail, false)?;
+    if label.is_some() || tex.trim().is_empty() {
+        return None;
+    }
+    Some(Statement::Shape(Shape::Math {
+        at,
+        tex: tex.clone(),
+        attrs,
+    }))
 }
 
 fn parse_box(kind: BoxKind, rest: &[Token]) -> Option<Statement> {
@@ -363,6 +509,105 @@ line 16,3 -> 20,3 \"AST\"
 line 2,10 <- 10,10 -- 10,14 -> 30,14
 text 5,12 \"free text\" color=muted
 ";
+
+    #[test]
+    fn manim_style_statements_parse_and_round_trip() {
+        let src = "\
+axes 0,0 40x12 x=-2pi..2pi y=-1.5..1.5 grid color=muted
+plot \"sin(x)\" \"\\sin x\" color=yellow
+plot \"x^2/4\" x=0..2 dashed
+math 42,2 \"e^{i\\pi} + 1 = 0\" color=green
+axes 0,14 10x5
+";
+        let d = parse(src);
+        assert!(
+            matches!(&d.shapes[0], Shape::Axes { rect, x, y, grid, attrs }
+                if *rect == Rect::new(0, 0, 40, 12)
+                    && x.as_deref() == Some("-2pi..2pi")
+                    && y.as_deref() == Some("-1.5..1.5")
+                    && *grid
+                    && attrs.color.as_deref() == Some("muted")),
+            "{:?}",
+            d.shapes[0]
+        );
+        assert_eq!(
+            d.shapes[1],
+            Shape::Plot {
+                expr: "sin(x)".into(),
+                x: None,
+                label: Some("\\sin x".into()),
+                attrs: Attrs {
+                    color: Some("yellow".into()),
+                    ..Attrs::default()
+                },
+            },
+            "LaTeX backslashes reach the label as written"
+        );
+        assert!(
+            matches!(&d.shapes[2], Shape::Plot { x, attrs, .. } if x.as_deref() == Some("0..2") && attrs.dashed)
+        );
+        assert!(
+            matches!(&d.shapes[3], Shape::Math { at, tex, .. } if *at == Point::new(42, 2) && tex == "e^{i\\pi} + 1 = 0")
+        );
+        assert!(matches!(
+            &d.shapes[4],
+            Shape::Axes {
+                x: None,
+                y: None,
+                grid: false,
+                ..
+            }
+        ));
+        // Written back exactly as it was read.
+        assert_eq!(to_source(&d), src);
+        assert_eq!(parse(&to_source(&d)), d);
+
+        // `plane` is axes with a grid; `graph` and `tex` are other names.
+        let d = parse("plane 0,0 5x5\ngraph \"x\"\ntex 0,0 \"x\"\n");
+        assert!(matches!(&d.shapes[0], Shape::Axes { grid: true, .. }));
+        assert!(matches!(&d.shapes[1], Shape::Plot { .. }));
+        assert!(matches!(&d.shapes[2], Shape::Math { .. }));
+    }
+
+    #[test]
+    fn bad_manim_statements_are_kept_as_written() {
+        for line in [
+            "axes 0,0 10x5 x=3..1",
+            "axes 0,0 10x5 x=a..b",
+            "axes 0,0 10x5 \"label\"",
+            "plot \"sin(\"",
+            "plot \"y\"",
+            "plot \"x\" y=0..1",
+            "plot sin(x)",
+            "math 0,0 \"\"",
+            "math 0,0",
+        ] {
+            let d = parse(line);
+            assert_eq!(d.shapes, vec![Shape::Raw(line.into())], "{line}");
+        }
+    }
+
+    #[test]
+    fn backslashes_escape_only_quotes_and_themselves() {
+        let d = parse("text 0,0 \"\\frac{a}{b} say \\\"hi\\\" back\\\\slash\"\n");
+        let Shape::Text { text, .. } = &d.shapes[0] else {
+            panic!("{:?}", d.shapes[0]);
+        };
+        assert_eq!(text, "\\frac{a}{b} say \"hi\" back\\slash");
+        assert_eq!(parse(&to_source(&d)), d, "round trip");
+        for s in ["\\", "a\\", "\\\\", "\\\"", "x\\\\\\y", "\\alpha\\beta"] {
+            assert_eq!(
+                tokenize(&quote(s)),
+                Some(vec![Token::Quoted(s.to_owned())]),
+                "{s:?}"
+            );
+        }
+        assert_eq!(
+            quote("\\frac{1}{2}"),
+            "\"\\frac{1}{2}\"",
+            "LaTeX is written as it reads"
+        );
+    }
 
     #[test]
     fn parses_every_statement() {

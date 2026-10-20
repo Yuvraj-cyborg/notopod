@@ -25,6 +25,10 @@ fn push_inlines(
         match inline {
             Inline::Text(t) => push(lines, Span::styled(t.clone(), style)),
             Inline::Code(c) => push(lines, Span::styled(c.clone(), style.patch(theme.code))),
+            Inline::Math { tex, .. } => push(
+                lines,
+                Span::styled(math::to_unicode(tex), style.patch(theme.math)),
+            ),
             Inline::Emphasis(inner) => {
                 push_inlines(inner, style.patch(theme.emphasis), theme, lines);
             }

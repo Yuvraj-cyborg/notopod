@@ -172,6 +172,44 @@ pub enum Shape {
         /// Styling (colour only).
         attrs: Attrs,
     },
+    /// A pair of axes over a rectangle of cells, Manim's `Axes`: ticks at
+    /// round numbers, each axis through zero where zero is in view and
+    /// along the edge where it is not, and a grid with `grid`.
+    Axes {
+        /// The cells the axes cover.
+        rect: Rect,
+        /// `a..b`, as written: the x values across the width. `-5..5`
+        /// when not given.
+        x: Option<String>,
+        /// The y values up the height. `-3..3` when not given.
+        y: Option<String>,
+        /// Grid lines at every tick, Manim's `NumberPlane`.
+        grid: bool,
+        /// Styling.
+        attrs: Attrs,
+    },
+    /// The graph of `y = expr`, on the nearest `axes` above it in the block.
+    /// Takes no cells of its own: it is drawn where its axes are, and moves
+    /// with them.
+    Plot {
+        /// The expression in `x`, as written (see the `expr` module).
+        expr: String,
+        /// `a..b`: only this stretch of x, when it is narrower than the axes.
+        x: Option<String>,
+        /// LaTeX drawn at the end of the curve, like Manim's graph label.
+        label: Option<String>,
+        /// Styling.
+        attrs: Attrs,
+    },
+    /// A typeset formula with its top-left corner at a cell.
+    Math {
+        /// Top-left cell.
+        at: Point,
+        /// The LaTeX.
+        tex: String,
+        /// Styling (colour only).
+        attrs: Attrs,
+    },
     /// A source line that is not a shape: a comment, a blank line, or
     /// something the parser did not understand. Kept so the block
     /// round-trips unchanged; never drawn.
@@ -183,7 +221,7 @@ impl Shape {
     /// for raw lines.
     pub fn bounds(&self) -> Option<Rect> {
         match self {
-            Shape::Box { rect, .. } => Some(*rect),
+            Shape::Box { rect, .. } | Shape::Axes { rect, .. } => Some(*rect),
             Shape::Line { points, .. } => {
                 let first = *points.first()?;
                 Some(
@@ -197,7 +235,11 @@ impl Shape {
             Shape::Text { at, text, .. } => {
                 Some(Rect::new(at.x, at.y, text.width().max(1) as i32, 1))
             }
-            Shape::Raw(_) => None,
+            Shape::Math { at, tex, .. } => {
+                let (w, h) = math_cells(tex);
+                Some(Rect::new(at.x, at.y, w, h))
+            }
+            Shape::Plot { .. } | Shape::Raw(_) => None,
         }
     }
 
@@ -205,8 +247,8 @@ impl Shape {
     /// line (within roughly half a cell), or on the text.
     pub fn hit(&self, p: Point) -> bool {
         match self {
-            Shape::Box { rect, .. } => rect.contains(p),
-            Shape::Text { .. } => self.bounds().is_some_and(|b| b.contains(p)),
+            Shape::Box { rect, .. } | Shape::Axes { rect, .. } => rect.contains(p),
+            Shape::Text { .. } | Shape::Math { .. } => self.bounds().is_some_and(|b| b.contains(p)),
             Shape::Line { points, .. } => points.windows(2).any(|w| {
                 segment_distance(
                     (p.x as f32, p.y as f32),
@@ -214,34 +256,38 @@ impl Shape {
                     (w[1].x as f32, w[1].y as f32),
                 ) <= 0.6
             }),
-            Shape::Raw(_) => false,
+            Shape::Plot { .. } | Shape::Raw(_) => false,
         }
     }
 
     /// Moves the shape by `(dx, dy)` cells.
     pub fn translate(&mut self, dx: i32, dy: i32) {
         match self {
-            Shape::Box { rect, .. } => *rect = rect.translated(dx, dy),
+            Shape::Box { rect, .. } | Shape::Axes { rect, .. } => *rect = rect.translated(dx, dy),
             Shape::Line { points, .. } => {
                 for p in points {
                     p.x += dx;
                     p.y += dy;
                 }
             }
-            Shape::Text { at, .. } => {
+            Shape::Text { at, .. } | Shape::Math { at, .. } => {
                 at.x += dx;
                 at.y += dy;
             }
-            Shape::Raw(_) => {}
+            // A plot is drawn on its axes and moves with them.
+            Shape::Plot { .. } | Shape::Raw(_) => {}
         }
     }
 
     /// The shape's styling, if it has any.
     pub fn attrs(&self) -> Option<&Attrs> {
         match self {
-            Shape::Box { attrs, .. } | Shape::Line { attrs, .. } | Shape::Text { attrs, .. } => {
-                Some(attrs)
-            }
+            Shape::Box { attrs, .. }
+            | Shape::Line { attrs, .. }
+            | Shape::Text { attrs, .. }
+            | Shape::Axes { attrs, .. }
+            | Shape::Plot { attrs, .. }
+            | Shape::Math { attrs, .. } => Some(attrs),
             Shape::Raw(_) => None,
         }
     }
@@ -249,19 +295,25 @@ impl Shape {
     /// Mutable styling, if the shape has any.
     pub fn attrs_mut(&mut self) -> Option<&mut Attrs> {
         match self {
-            Shape::Box { attrs, .. } | Shape::Line { attrs, .. } | Shape::Text { attrs, .. } => {
-                Some(attrs)
-            }
+            Shape::Box { attrs, .. }
+            | Shape::Line { attrs, .. }
+            | Shape::Text { attrs, .. }
+            | Shape::Axes { attrs, .. }
+            | Shape::Plot { attrs, .. }
+            | Shape::Math { attrs, .. } => Some(attrs),
             Shape::Raw(_) => None,
         }
     }
 
-    /// The label of a box or line, or the text of a text shape.
+    /// The label of a box, line or plot, the text of a text shape, or the
+    /// LaTeX of a formula.
     pub fn label(&self) -> Option<&str> {
         match self {
-            Shape::Box { label, .. } | Shape::Line { label, .. } => label.as_deref(),
-            Shape::Text { text, .. } => Some(text),
-            Shape::Raw(_) => None,
+            Shape::Box { label, .. } | Shape::Line { label, .. } | Shape::Plot { label, .. } => {
+                label.as_deref()
+            }
+            Shape::Text { text, .. } | Shape::Math { tex: text, .. } => Some(text),
+            Shape::Axes { .. } | Shape::Raw(_) => None,
         }
     }
 
@@ -270,18 +322,41 @@ impl Shape {
     /// still exists.
     pub fn set_label(&mut self, value: &str) {
         match self {
-            Shape::Box { label, .. } | Shape::Line { label, .. } => {
+            Shape::Box { label, .. } | Shape::Line { label, .. } | Shape::Plot { label, .. } => {
                 *label = (!value.is_empty()).then(|| value.to_owned());
             }
-            Shape::Text { text, .. } => {
+            Shape::Text { text, .. } | Shape::Math { tex: text, .. } => {
                 *text = if value.is_empty() {
                     " ".to_owned()
                 } else {
                     value.to_owned()
                 };
             }
-            Shape::Raw(_) => {}
+            Shape::Axes { .. } | Shape::Raw(_) => {}
         }
+    }
+}
+
+/// Rows of a formula's em inside a drawing.
+pub(crate) const MATH_EM_ROWS: f32 = 0.9;
+
+/// How many times taller than wide a terminal cell is assumed to be when
+/// working out how many cells a formula covers. A little more than most
+/// fonts, so the cells always hold the picture.
+const CELL_ASPECT: f32 = 2.3;
+
+/// Columns and rows a formula covers: enough for it typeset, where this
+/// build typesets, and for its Unicode spelling, since which of the two a
+/// terminal gets is not known until it is drawn.
+pub(crate) fn math_cells(tex: &str) -> (i32, i32) {
+    let text = math::to_unicode(tex).width().max(1) as i32;
+    match math::measure(tex, true) {
+        Some((w, h)) => {
+            let cols = (w * MATH_EM_ROWS * CELL_ASPECT).ceil() as i32;
+            let rows = (h * MATH_EM_ROWS).ceil() as i32;
+            (cols.max(text), rows.max(1))
+        }
+        None => (text, 1),
     }
 }
 

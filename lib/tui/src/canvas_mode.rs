@@ -176,6 +176,9 @@ fn describe(shape: &Shape) -> String {
             }
         }
         Shape::Text { text, .. } => format!("text \"{text}\""),
+        Shape::Axes { .. } => "axes".to_owned(),
+        Shape::Plot { expr, .. } => format!("plot \"{expr}\""),
+        Shape::Math { tex, .. } => format!("math \"{tex}\""),
         Shape::Raw(_) => "raw line".to_owned(),
     }
 }
@@ -571,7 +574,7 @@ mod tests {
         assert!(!s.delete());
         s.cursor = Point::new(0, 0);
         assert!(s.delete());
-        assert!(s.drawing.shapes.is_empty());
+        assert!(s.drawing.shapes.is_empty(), "{:?}", s.drawing.shapes);
     }
 
     #[test]

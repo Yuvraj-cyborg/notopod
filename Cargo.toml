@@ -19,9 +19,17 @@ publish = false
 name = "notopod"
 path = "src/main.rs"
 
+[features]
+default = ["math"]
+# Equations typeset as pictures, about 2.6 MB of the binary. Without it
+# (`--no-default-features`) they are spelled out in Unicode instead.
+math = ["math/typeset"]
+
 [dependencies]
 syntax.workspace = true
 graphics.workspace = true
+math.workspace = true
+manim.workspace = true
 notes.workspace = true
 render.workspace = true
 theme.workspace = true
@@ -43,7 +51,7 @@ members = ["lib/*"]
 default-members = [".", "lib/*"]
 
 [workspace.package]
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT"
@@ -59,6 +67,8 @@ syntax = { path = "lib/syntax" }
 canvas = { path = "lib/canvas" }
 graphics = { path = "lib/graphics" }
 render = { path = "lib/render" }
+math = { path = "lib/math", default-features = false }
+manim = { path = "lib/manim" }
 notes = { path = "lib/notes" }
 editor = { path = "lib/editor" }
 theme = { path = "lib/theme" }
@@ -76,6 +86,9 @@ rustix = { version = "1.0", features = ["event", "stdio"] }
 serde = { version = "1.0", features = ["derive"] }
 tempfile = "3.20"
 png = "0.18"
+ratex-layout = "0.1.15"
+ratex-parser = "0.1.15"
+ratex-types = "0.1.15"
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 toml = "1.1"
 unicode-width = "0.2"
