@@ -82,6 +82,37 @@ impl Formula {
     }
 }
 
+/// Formulas whose size [`measure`] remembers before it starts over.
+const MEASURE_CACHE: usize = 256;
+
+/// Width and height in em of `tex` typeset, or `None` when it does not
+/// parse. Remembered, so asking again — layout does, on every keystroke —
+/// costs a lookup.
+pub fn measure(tex: &str, display: bool) -> Option<(f32, f32)> {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    type Sizes = HashMap<(String, bool), Option<(f32, f32)>>;
+    thread_local! {
+        static SIZES: RefCell<Sizes> = RefCell::new(HashMap::new());
+    }
+    if !TYPESET {
+        return None;
+    }
+    SIZES.with(|sizes| {
+        let mut sizes = sizes.borrow_mut();
+        if let Some(size) = sizes.get(&(tex.to_owned(), display)) {
+            return *size;
+        }
+        if sizes.len() >= MEASURE_CACHE {
+            sizes.clear();
+        }
+        let size = layout(tex, display).ok().map(|f| (f.width(), f.height()));
+        sizes.insert((tex.to_owned(), display), size);
+        size
+    })
+}
+
 /// `tex` typeset and drawn on a transparent pixmap exactly as large as the
 /// formula plus `pad` pixels all round, or `None` when it does not parse.
 pub fn render(tex: &str, display: bool, em: f32, pad: f32, color: Rgb) -> Option<Pixmap> {

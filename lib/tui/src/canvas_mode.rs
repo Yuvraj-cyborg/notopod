@@ -176,6 +176,9 @@ fn describe(shape: &Shape) -> String {
             }
         }
         Shape::Text { text, .. } => format!("text \"{text}\""),
+        Shape::Axes { .. } => "axes".to_owned(),
+        Shape::Plot { expr, .. } => format!("plot \"{expr}\""),
+        Shape::Math { tex, .. } => format!("math \"{tex}\""),
         Shape::Raw(_) => "raw line".to_owned(),
     }
 }

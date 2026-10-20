@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 theme.workspace = true
+math.workspace = true
 ab_glyph.workspace = true
 png.workspace = true
 ratatui.workspace = true

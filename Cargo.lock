@@ -211,6 +211,7 @@ name = "canvas"
 version = "0.3.1"
 dependencies = [
  "ab_glyph",
+ "math",
  "png",
  "ratatui",
  "theme",

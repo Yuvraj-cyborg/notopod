@@ -5,7 +5,9 @@ use ratatui::text::Line;
 use theme::Theme;
 use unicode_width::UnicodeWidthStr;
 
+use crate::expr::Expr;
 use crate::model::{BoxKind, Drawing, Point, Rect, Shape};
+use crate::plot;
 use crate::raster::{Raster, DOTS_X, DOTS_Y};
 use crate::rough::{self, Pen, Rng};
 
@@ -212,7 +214,157 @@ fn draw_shape(
             }
         }
         Shape::Text { at, text, .. } => raster.put_text(at.x, at.y, text, text_style),
+        Shape::Math { at, tex, .. } => {
+            raster.put_text(at.x, at.y, &math::to_unicode(tex), text_style);
+        }
+        Shape::Axes {
+            rect, x, y, attrs, ..
+        } => {
+            let frame = braille_frame(*rect, x.as_deref(), y.as_deref());
+            let mut pen = Pen::new(raster, color).dashed(attrs.dashed);
+            braille_axes(&mut pen, &frame, &mut rng);
+            braille_tick_labels(raster, &frame, text_style);
+        }
+        Shape::Plot { .. } => braille_plot(raster, drawing, shape, color, text_style),
         Shape::Raw(_) => {}
+    }
+}
+
+/// A `plot`, in dots, on the axes above it, with its label spelled out
+/// beside the end of the curve.
+fn braille_plot(
+    raster: &mut Raster,
+    drawing: &Drawing,
+    shape: &Shape,
+    color: Option<Color>,
+    text_style: ratatui::style::Style,
+) {
+    let Shape::Plot {
+        expr,
+        x,
+        label,
+        attrs,
+    } = shape
+    else {
+        return;
+    };
+    let Some(Shape::Axes {
+        rect, x: ax, y: ay, ..
+    }) = plot::axes_for(drawing, shape)
+    else {
+        return;
+    };
+    let Ok(expr) = Expr::parse(expr) else {
+        return;
+    };
+    let frame = braille_frame(*rect, ax.as_deref(), ay.as_deref());
+    let only = x.as_deref().and_then(crate::expr::range);
+    let samples = (frame.right - frame.left).max(1.0) as usize;
+    let runs = plot::curve(&expr, only, &frame, samples);
+    let mut pen = Pen::new(raster, color).dashed(attrs.dashed);
+    for run in &runs {
+        pen.restart_dash();
+        pen.polyline(run);
+    }
+    if let (Some(label), Some(end)) = (label, runs.last().and_then(|r| r.last())) {
+        let text = math::to_unicode(label);
+        let w = text.width() as i32;
+        let (cx, cy) = (
+            (end.0 / DOTS_X as f32).round() as i32,
+            (end.1 / DOTS_Y as f32).floor() as i32,
+        );
+        // Beside the end of the curve, and back inside the axes
+        // when that would run off them.
+        let cx = if cx + 1 + w > rect.x + rect.w {
+            cx - w - 1
+        } else {
+            cx + 1
+        };
+        raster.put_text(cx.max(rect.x), (cy - 1).max(rect.y), &text, text_style);
+    }
+}
+
+/// Dots between ticks along the x axis, and up the y axis.
+const TICK_SPACING_X: f32 = 12.0;
+const TICK_SPACING_Y: f32 = 8.0;
+
+/// The area inside a pair of axes, in dots. An axis along an edge leaves
+/// room beyond it for its tick labels; arrowheads get room at the top and
+/// right.
+fn braille_frame(rect: Rect, x: Option<&str>, y: Option<&str>) -> plot::Frame {
+    let (xr, yr) = plot::ranges(x, y);
+    let mut frame = plot::Frame {
+        left: (rect.x * DOTS_X) as f32 + 1.0,
+        top: (rect.y * DOTS_Y) as f32 + 3.0,
+        right: ((rect.x + rect.w) * DOTS_X) as f32 - 4.0,
+        bottom: ((rect.y + rect.h) * DOTS_Y) as f32 - 2.0,
+        x: xr,
+        y: yr,
+    };
+    if !(xr.0 <= 0.0 && 0.0 <= xr.1) {
+        let (ticks, step) = plot::ticks(yr, frame.bottom - frame.top, TICK_SPACING_Y);
+        let widest = ticks
+            .iter()
+            .map(|t| crate::expr::tick_label(*t, step).width())
+            .max()
+            .unwrap_or(0);
+        frame.left += ((widest + 1) as i32 * DOTS_X) as f32;
+    }
+    if !(yr.0 <= 0.0 && 0.0 <= yr.1) {
+        frame.bottom -= DOTS_Y as f32;
+    }
+    frame.right = frame.right.max(frame.left + 1.0);
+    frame.bottom = frame.bottom.max(frame.top + 1.0);
+    frame
+}
+
+fn braille_axes(pen: &mut Pen<'_>, f: &plot::Frame, rng: &mut Rng) {
+    let (ax, ay) = (f.y_axis(), f.x_axis());
+    let right = (f.right + 3.0, ay);
+    pen.polyline(&[(f.left, ay), right]);
+    rough::arrowhead(pen, right, (f.left, ay), 0.0, rng);
+    pen.restart_dash();
+    let top = (ax, f.top - 2.0);
+    pen.polyline(&[(ax, f.bottom), top]);
+    rough::arrowhead(pen, top, (ax, f.bottom), 0.0, rng);
+    for t in plot::x_ticks(f, TICK_SPACING_X).0 {
+        let px = f.sx(t).round() as i32;
+        if (px as f32 - ax).abs() > 1.0 {
+            pen.restart_dash();
+            pen.line(px, ay as i32 - 1, px, ay as i32 + 1);
+        }
+    }
+    for t in plot::y_ticks(f, TICK_SPACING_Y).0 {
+        let py = f.sy(t).round() as i32;
+        if (py as f32 - ay).abs() > 1.0 {
+            pen.restart_dash();
+            pen.line(ax as i32 - 1, py, ax as i32 + 1, py);
+        }
+    }
+}
+
+/// Numbers under the x axis and left of the y axis. Where the axes cross
+/// at the origin, its `0` is left out: it would sit on the lines.
+fn braille_tick_labels(raster: &mut Raster, f: &plot::Frame, style: ratatui::style::Style) {
+    let (ax, ay) = (f.y_axis(), f.x_axis());
+    let (axis_col, axis_row) = ((ax / DOTS_X as f32) as i32, (ay / DOTS_Y as f32) as i32);
+    let (xs, step) = plot::x_ticks(f, TICK_SPACING_X);
+    for t in xs {
+        if t == 0.0 && f.origin_in_view() {
+            continue;
+        }
+        let label = crate::expr::tick_label(t, step);
+        let col = (f.sx(t) / DOTS_X as f32).round() as i32 - label.width() as i32 / 2;
+        raster.put_text(col, axis_row + 1, &label, style);
+    }
+    let (ys, step) = plot::y_ticks(f, TICK_SPACING_Y);
+    for t in ys {
+        if t == 0.0 && f.origin_in_view() {
+            continue;
+        }
+        let label = crate::expr::tick_label(t, step);
+        let row = (f.sy(t) / DOTS_Y as f32) as i32;
+        raster.put_text(axis_col - label.width() as i32, row, &label, style);
     }
 }
 
@@ -557,6 +709,40 @@ mod tests {
         assert_eq!(
             a.iter().map(ToString::to_string).collect::<Vec<_>>(),
             b.iter().map(ToString::to_string).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn axes_plots_and_formulas_in_braille() {
+        let lines = plain(
+            "axes 0,0 30x10 x=-3..3 y=-1..1\nplot \"sin(x)\" \"\\sin x\"\nmath 32,1 \"\\frac{1}{2}\\pi r^2\"\n",
+        );
+        let text = lines.join("\n");
+        // Tick numbers along both axes; no 0 where the axes cross.
+        for number in ["-2", "2", "0.5", "-0.5"] {
+            assert!(text.contains(number), "{number} missing:\n{text}");
+        }
+        assert!(text.contains("sin x"), "the graph's label:\n{text}");
+        assert!(text.contains("½π r²"), "the formula, spelled out:\n{text}");
+        // The curve is drawn: dots above and below the x axis.
+        let dotted = |row: &String| row.chars().any(|c| ('\u{2801}'..='\u{28ff}').contains(&c));
+        assert!(lines[1..4].iter().any(dotted) && lines[6..9].iter().any(dotted));
+    }
+
+    #[test]
+    fn a_plot_without_axes_draws_nothing_and_moves_with_its_axes() {
+        assert!(
+            plain("plot \"x\"\n").is_empty()
+                || plain("plot \"x\"\n").iter().all(|l| l.trim().is_empty())
+        );
+        let here = plain("axes 0,0 20x8\nplot \"x/2\"\n");
+        let moved = plain("axes 4,2 20x8\nplot \"x/2\"\n");
+        assert_eq!(moved.len(), here.len() + 2, "two rows lower");
+        let shifted: Vec<String> = here.iter().map(|l| format!("    {l}")).collect();
+        assert_eq!(
+            moved[2].trim_end(),
+            shifted[0].trim_end(),
+            "and four columns right, curve and all"
         );
     }
 
