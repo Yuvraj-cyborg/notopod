@@ -19,8 +19,9 @@
 //! vim = false             # vim keys in the editor
 //!
 //! [manim]
-//! enabled = false         # run ```manim blocks with your manim (it executes their Python)
+//! enabled = true          # draw ```manim blocks (runs their Python when it has to)
 //! command = "manim"       # or "uv run manim", "python -m manim", ...
+//! python = "..."          # the Python manim is installed in, if `command` hides it
 //! quality = "medium"      # low | medium | high
 //! timeout = 60            # seconds one scene may take
 //! ```
@@ -60,10 +61,13 @@ pub struct Config {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManimSection {
-    /// Run ```` ```manim ```` blocks. Off unless set: it runs their Python.
+    /// Draw ```` ```manim ```` blocks. On unless set to false.
     pub enabled: Option<bool>,
     /// The program and its first arguments, split on spaces.
     pub command: Option<String>,
+    /// The Python that has manim installed, for a `command` it cannot
+    /// be read from (`uv run manim`).
+    pub python: Option<PathBuf>,
     /// `low`, `medium` or `high` (or `l`, `m`, `h`).
     pub quality: Option<String>,
     /// Seconds one scene may take.
@@ -168,12 +172,12 @@ pub fn resolve_vim(flag: bool, config: &Config) -> bool {
     flag || config.keys.vim.unwrap_or(false)
 }
 
-/// A renderer for ```` ```manim ```` blocks when `--manim` or
-/// `[manim] enabled = true` allows them to run, `None` otherwise. Frames
-/// are kept in `$XDG_CACHE_HOME/notopod/manim` (`~/.cache/notopod/manim`).
-pub fn resolve_manim(flag: bool, config: &Config) -> Result<Option<manim::Manim>> {
+/// A renderer for ```` ```manim ```` blocks, unless `[manim] enabled =
+/// false` says not to. Frames are kept in `$XDG_CACHE_HOME/notopod/manim`
+/// (`~/.cache/notopod/manim`).
+pub fn resolve_manim(config: &Config) -> Result<Option<manim::Manim>> {
     let section = &config.manim;
-    if !(flag || section.enabled.unwrap_or(false)) {
+    if !section.enabled.unwrap_or(true) {
         return Ok(None);
     }
     let cache = cache_dir().map_or_else(
@@ -188,6 +192,7 @@ pub fn resolve_manim(flag: bool, config: &Config) -> Result<Option<manim::Manim>
         }
         m.command = words;
     }
+    m.python.clone_from(&section.python);
     if let Some(q) = &section.quality {
         m.quality = match q.trim().to_ascii_lowercase().as_str() {
             "l" | "low" => 'l',
