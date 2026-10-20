@@ -650,10 +650,12 @@ version = "0.3.1"
 dependencies = [
  "canvas",
  "crossterm",
+ "math",
  "ratatui",
  "render",
  "rustix",
  "theme",
+ "tiny-skia",
 ]
 
 [[package]]
@@ -959,6 +961,7 @@ dependencies = [
  "clap",
  "crossterm",
  "graphics",
+ "math",
  "notes",
  "render",
  "serde",
@@ -1469,6 +1472,7 @@ name = "render"
 version = "0.3.1"
 dependencies = [
  "canvas",
+ "math",
  "ratatui",
  "syntax",
  "theme",

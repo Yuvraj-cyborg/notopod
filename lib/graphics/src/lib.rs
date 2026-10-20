@@ -31,7 +31,8 @@ use std::io::IsTerminal;
 use std::time::Duration;
 
 use canvas::{CellSize, Drawing, Overlay};
-use ratatui::text::Line;
+use ratatui::style::Color;
+use ratatui::text::{Line, Span};
 use render::Drawings;
 use theme::{Rgb, Theme};
 
@@ -249,33 +250,69 @@ fn cache_key(
     h.finish()
 }
 
-impl Drawings for Graphics {
-    fn draw(
-        &mut self,
-        drawing: &Drawing,
-        theme: &Theme,
-        max_width: usize,
-        overlay: Option<&Overlay<'_>>,
-    ) -> Vec<Line<'static>> {
-        if !self.pictures {
-            return canvas::render(drawing, theme, max_width, overlay);
+fn math_key(tex: &str, theme: &Theme, color: Rgb, max_width: usize) -> u64 {
+    let mut h = DefaultHasher::new();
+    "math".hash(&mut h);
+    tex.hash(&mut h);
+    theme.name.hash(&mut h);
+    color.hash(&mut h);
+    max_width.hash(&mut h);
+    h.finish()
+}
+
+/// How big a display equation's em is, against the height of a cell: a
+/// little larger than the terminal's own text, as display math is on paper.
+const MATH_EM: f32 = 0.95;
+
+/// Smallest em an equation is shrunk to before it is spelled out in text
+/// instead, against the height of a cell.
+const MATH_MIN_EM: f32 = 0.5;
+
+/// A display equation as a picture covering whole cells, centred in them,
+/// at most `max_cols` wide. `None` when it does not parse or would not be
+/// readable at that width.
+fn math_image(tex: &str, cell: CellSize, color: Rgb, max_cols: usize) -> Option<canvas::Image> {
+    let formula = math::layout(tex, true).ok()?;
+    let (cw, ch) = (cell.width as f32, cell.height as f32);
+    // Half a cell of air either side, so the picture never touches the
+    // text that wraps around it.
+    let room = max_cols as f32 * cw - cw;
+    let mut em = ch * MATH_EM;
+    if formula.width() * em > room {
+        em = room / formula.width();
+        if em < ch * MATH_MIN_EM {
+            return None;
         }
-        let max_width = max_width.min(kitty::MAX_CELLS);
+    }
+    let (w, h) = (formula.width() * em + cw, formula.height() * em + ch * 0.5);
+    let cols = ((w / cw).ceil() as usize).clamp(1, max_cols.max(1));
+    let rows = ((h / ch).ceil() as usize).max(1);
+    let mut pixmap = tiny_skia::Pixmap::new(cols as u32 * cell.width, rows as u32 * cell.height)?;
+    let left = (pixmap.width() as f32 - formula.width() * em) / 2.0;
+    let top = (pixmap.height() as f32 - formula.height() * em) / 2.0;
+    formula.draw(&mut pixmap, left, top, em, color);
+    Some(canvas::Image::from_pixmap(pixmap, cols, rows))
+}
+
+impl Graphics {
+    /// The rows that show the picture stored under `key`, sending it to
+    /// the terminal first when it is not there yet. `None` when `render`
+    /// has nothing, or when the picture is too big to address, so the
+    /// caller can fall back to text.
+    fn place(
+        &mut self,
+        key: u64,
+        render: impl FnOnce() -> Option<canvas::Image>,
+    ) -> Option<Vec<Line<'static>>> {
         self.clock += 1;
-        let key = cache_key(drawing, theme, max_width, overlay);
         if let Some(entry) = self.cache.get_mut(&key) {
             entry.used = self.clock;
-            return kitty::placeholder_lines(entry.id, entry.cols, entry.rows);
+            return Some(kitty::placeholder_lines(entry.id, entry.cols, entry.rows));
         }
-        let Some(image) =
-            canvas::render_image(drawing, theme, self.cell, self.fg, max_width, overlay)
-        else {
-            return Vec::new();
-        };
+        let image = render()?;
         let (cols, rows) = (image.cols(), image.rows());
-        if rows > kitty::MAX_CELLS {
-            // Too tall to address: fall back rather than show a part.
-            return canvas::render(drawing, theme, max_width, overlay);
+        if rows > kitty::MAX_CELLS || cols > kitty::MAX_CELLS {
+            return None;
         }
         let id = self.next_id();
         self.pending
@@ -290,7 +327,55 @@ impl Drawings for Graphics {
             },
         );
         self.evict();
-        kitty::placeholder_lines(id, cols, rows)
+        Some(kitty::placeholder_lines(id, cols, rows))
+    }
+}
+
+impl Drawings for Graphics {
+    fn draw(
+        &mut self,
+        drawing: &Drawing,
+        theme: &Theme,
+        max_width: usize,
+        overlay: Option<&Overlay<'_>>,
+    ) -> Vec<Line<'static>> {
+        if !self.pictures {
+            return canvas::render(drawing, theme, max_width, overlay);
+        }
+        let max_width = max_width.min(kitty::MAX_CELLS);
+        let key = cache_key(drawing, theme, max_width, overlay);
+        let (cell, fg) = (self.cell, self.fg);
+        // Too tall to address, or nothing to draw: braille rather than part
+        // of a picture.
+        self.place(key, || {
+            canvas::render_image(drawing, theme, cell, fg, max_width, overlay)
+        })
+        .unwrap_or_else(|| canvas::render(drawing, theme, max_width, overlay))
+    }
+
+    fn math(&mut self, tex: &str, theme: &Theme, max_width: usize) -> Vec<Line<'static>> {
+        if !self.pictures || !math::TYPESET {
+            return render::math_text(tex, theme, max_width);
+        }
+        let max_width = max_width.min(kitty::MAX_CELLS);
+        let color = theme::to_rgb(theme.math.fg.unwrap_or(Color::Reset), self.fg);
+        let key = math_key(tex, theme, color, max_width);
+        let cell = self.cell;
+        let Some(lines) = self.place(key, || math_image(tex, cell, color, max_width)) else {
+            return render::math_text(tex, theme, max_width);
+        };
+        let pad = max_width.saturating_sub(lines.first().map_or(0, Line::width)) / 2;
+        if pad == 0 {
+            return lines;
+        }
+        lines
+            .into_iter()
+            .map(|line| {
+                let mut spans = vec![Span::raw(" ".repeat(pad))];
+                spans.extend(line.spans);
+                Line::from(spans)
+            })
+            .collect()
     }
 }
 
@@ -300,6 +385,44 @@ mod tests {
 
     fn drawing(src: &str) -> Drawing {
         canvas::parse(src)
+    }
+
+    #[test]
+    fn equations_are_pictures_centred_and_sent_once() {
+        let mut g = Graphics::kitty(CellSize::new(8, 16), (255, 255, 255));
+        let theme = Theme::default();
+        let tex = r"x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}";
+        let lines = g.math(tex, &theme, 80);
+        if !math::TYPESET {
+            // A build without typesetting spells it out instead.
+            assert!(lines[0].to_string().contains('√'));
+            assert!(g.take_pending().is_empty());
+            return;
+        }
+        assert!(lines.len() >= 2, "a fraction is taller than a line");
+        let pad = &lines[0].spans[0];
+        assert!(pad.content.trim().is_empty(), "centred with spaces");
+        assert!(lines[0].spans[1].content.starts_with(kitty::PLACEHOLDER));
+        assert_eq!(
+            lines[0].width(),
+            lines[1].width(),
+            "every row the same width"
+        );
+        assert!(lines[0].width() <= 80);
+        assert!(g.take_pending().starts_with("\x1b_Ga=T,f=100"));
+
+        g.math(tex, &theme, 80);
+        assert!(g.take_pending().is_empty(), "cached: not sent twice");
+
+        // What does not parse is spelled out, not dropped.
+        let broken = g.math(r"\frac{1", &theme, 80);
+        assert_eq!(broken[0].to_string().trim(), "1");
+        assert!(g.take_pending().is_empty());
+
+        // Braille mode never sends pictures of equations either.
+        let mut b = Graphics::braille();
+        assert!(b.math(tex, &theme, 80)[0].to_string().contains('√'));
+        assert!(b.take_pending().is_empty());
     }
 
     #[test]

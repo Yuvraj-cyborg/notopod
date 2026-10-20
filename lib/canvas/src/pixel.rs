@@ -57,6 +57,16 @@ pub struct Image {
 }
 
 impl Image {
+    /// A picture painted elsewhere, covering `cols` by `rows` cells. The
+    /// pixmap should be exactly that many cells in size.
+    pub fn from_pixmap(pixmap: Pixmap, cols: usize, rows: usize) -> Self {
+        Self {
+            pixmap,
+            cols: i32::try_from(cols).unwrap_or(i32::MAX),
+            rows: i32::try_from(rows).unwrap_or(i32::MAX),
+        }
+    }
+
     /// Columns the picture covers on screen.
     pub fn cols(&self) -> usize {
         self.cols.max(0) as usize

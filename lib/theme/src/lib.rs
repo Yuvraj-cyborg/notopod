@@ -176,6 +176,9 @@ pub struct Theme {
     pub code_lang: Style,
     /// Link text.
     pub link: Style,
+    /// Math: inline `$x^2$` spelled out in Unicode, and the colour display
+    /// equations are drawn in. The text colour unless a theme says otherwise.
+    pub math: Style,
     /// The `[image: alt]` placeholder.
     pub image: Style,
     /// The bar in front of a block quote.
@@ -257,6 +260,7 @@ impl Theme {
             code_border: muted,
             code_lang: muted.add_modifier(Modifier::ITALIC),
             link: fg(p.blue).add_modifier(Modifier::UNDERLINED),
+            math: text,
             image: muted.add_modifier(Modifier::ITALIC),
             quote_bar: fg(p.magenta),
             quote_text: Style::new().add_modifier(Modifier::ITALIC),
@@ -345,7 +349,7 @@ impl Theme {
     }
 
     /// Names of every element that `[styles]` can set.
-    pub const STYLE_NAMES: [&'static str; 34] = [
+    pub const STYLE_NAMES: [&'static str; 35] = [
         "heading1",
         "heading2",
         "heading3",
@@ -362,6 +366,7 @@ impl Theme {
         "code_border",
         "code_lang",
         "link",
+        "math",
         "image",
         "quote_bar",
         "quote_text",
@@ -401,6 +406,7 @@ impl Theme {
             "code_border" => &mut self.code_border,
             "code_lang" => &mut self.code_lang,
             "link" => &mut self.link,
+            "math" => &mut self.math,
             "image" => &mut self.image,
             "quote_bar" => &mut self.quote_bar,
             "quote_text" => &mut self.quote_text,

@@ -19,9 +19,16 @@ publish = false
 name = "notopod"
 path = "src/main.rs"
 
+[features]
+default = ["math"]
+# Equations typeset as pictures, about 2.6 MB of the binary. Without it
+# (`--no-default-features`) they are spelled out in Unicode instead.
+math = ["math/typeset"]
+
 [dependencies]
 syntax.workspace = true
 graphics.workspace = true
+math.workspace = true
 notes.workspace = true
 render.workspace = true
 theme.workspace = true

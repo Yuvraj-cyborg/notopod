@@ -117,6 +117,11 @@ fn render_block_at(
         BlockKind::CodeBlock { lang, code } if lang.as_deref() == Some(canvas::LANG) => {
             drawings.draw_source(code, theme, width)
         }
+        // GitHub's spelling of a display equation, alongside `$$ ... $$`.
+        BlockKind::CodeBlock { lang, code } if lang.as_deref() == Some("math") => {
+            drawings.math(code, theme, width)
+        }
+        BlockKind::Math(tex) => drawings.math(tex, theme, width),
         BlockKind::CodeBlock { lang, code } => code_block(lang.as_deref(), code, width, theme),
         BlockKind::BlockQuote(blocks) => {
             let inner = render_blocks(
@@ -477,6 +482,26 @@ mod tests {
         assert_eq!(lines.len(), 4);
         assert!(!lines[0].starts_with('╭'), "no code box around a drawing");
         assert!(lines[1].contains("hi"));
+    }
+
+    #[test]
+    fn math_is_spelled_out_where_it_cannot_be_a_picture() {
+        assert_eq!(
+            render("Energy is $E = mc^2$.\n", 40),
+            vec!["Energy is E = mc².".to_owned()]
+        );
+        // Display math, `$$` or ```` ```math ````, is centred on its own.
+        assert_eq!(
+            render("$$\\frac{1}{2}\\alpha$$\n", 11),
+            vec!["    ½α".to_owned()]
+        );
+        assert_eq!(
+            render("```math\n\\sqrt{x}\n```\n", 6),
+            vec!["  √x".to_owned()],
+            "no code box around a math block"
+        );
+        // ```` ```latex ```` is code people want to read as code.
+        assert!(render("```latex\n\\frac{a}{b}\n```\n", 20)[0].starts_with('╭'));
     }
 
     #[test]

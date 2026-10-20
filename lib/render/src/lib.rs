@@ -27,5 +27,5 @@ pub use block::{
     render_block, render_block_with, render_document, render_document_with, render_list_item,
     render_list_item_with,
 };
-pub use drawings::{Braille, Drawings};
+pub use drawings::{math_text, Braille, Drawings};
 pub use inline::render_inlines;
