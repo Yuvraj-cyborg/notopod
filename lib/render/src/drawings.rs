@@ -38,7 +38,16 @@ pub trait Drawings {
     fn math(&mut self, tex: &str, theme: &Theme, max_width: usize) -> Vec<Line<'static>> {
         math_text(tex, theme, max_width)
     }
+
+    /// Rows for a ```` ```manim ```` block. The default shows its code:
+    /// running Python from a note is something the user switches on.
+    fn manim(&mut self, src: &str, theme: &Theme, max_width: usize) -> Vec<Line<'static>> {
+        crate::block::manim_text(src, MANIM_OFF, max_width, theme)
+    }
 }
+
+/// What a ```` ```manim ```` block says when rendering it is off.
+pub const MANIM_OFF: &str = "manim: off. `[manim] enabled = true` or --manim runs this block";
 
 /// A display equation as centred lines of Unicode, for where it cannot be
 /// a picture. Nothing for an empty one.

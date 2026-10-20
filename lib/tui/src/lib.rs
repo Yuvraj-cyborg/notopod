@@ -43,8 +43,15 @@ pub use picker::{pick_theme, Entry as ThemeEntry};
 /// Takes over the terminal for the duration and restores it afterwards,
 /// including on panic. `graphics` decides whether drawings are shown as
 /// pictures; in [`Mode::Auto`] the terminal is asked. `vim` turns on vim
-/// keys.
-pub fn run(paths: &[&Path], theme: Theme, graphics: Mode, vim: bool) -> Result<()> {
+/// keys. `manim`, when given, renders ```` ```manim ```` blocks in the
+/// background.
+pub fn run(
+    paths: &[&Path],
+    theme: Theme,
+    graphics: Mode,
+    vim: bool,
+    manim: Option<manim::Manim>,
+) -> Result<()> {
     // A path that is not there yet is a note to create, not a folder.
     let (folders, notes): (Vec<&Path>, Vec<&Path>) =
         paths.iter().copied().partition(|p| p.is_dir());
@@ -55,7 +62,7 @@ pub fn run(paths: &[&Path], theme: Theme, graphics: Mode, vim: bool) -> Result<(
 
     let mut terminal = ratatui::init();
     // Raw mode is on now, so the terminal's answer can be read.
-    let graphics = Graphics::detect(graphics);
+    let graphics = Graphics::detect(graphics).with_manim(manim);
     let mut app = App::new(editor, theme)
         .with_graphics(graphics)
         .with_vim(vim);

@@ -90,6 +90,10 @@ pub struct Graphics {
     pending: String,
     clock: u64,
     ids: u64,
+    /// Renders ```` ```manim ```` blocks, when the user has allowed it.
+    manim: Option<manim::Manim>,
+    /// Wait for manim rather than showing a placeholder, for printing.
+    blocking: bool,
 }
 
 impl Default for Graphics {
@@ -122,7 +126,29 @@ impl Graphics {
             pending: String::new(),
             clock: 0,
             ids: seed | 1,
+            manim: None,
+            blocking: false,
         }
+    }
+
+    /// Lets ```` ```manim ```` blocks run, with `manim`. `None` keeps them
+    /// as code.
+    #[must_use]
+    pub fn with_manim(mut self, manim: Option<manim::Manim>) -> Self {
+        self.manim = manim;
+        self
+    }
+
+    /// Makes manim blocks wait for their render instead of showing a
+    /// placeholder: for printing a note, where there is no later frame.
+    pub fn set_blocking(&mut self, blocking: bool) {
+        self.blocking = blocking;
+    }
+
+    /// Goes up whenever something rendered in the background has become
+    /// ready. A screen caching what it drew redraws when this changes.
+    pub fn generation(&self) -> u64 {
+        self.manim.as_ref().map_or(0, manim::Manim::generation)
     }
 
     /// Decides how to draw, asking the terminal in [`Mode::Auto`].
@@ -296,27 +322,27 @@ fn math_image(tex: &str, cell: CellSize, color: Rgb, max_cols: usize) -> Option<
 
 impl Graphics {
     /// The rows that show the picture stored under `key`, sending it to
-    /// the terminal first when it is not there yet. `None` when `render`
-    /// has nothing, or when the picture is too big to address, so the
-    /// caller can fall back to text.
+    /// the terminal first when it is not there yet. `render` gives a PNG
+    /// and the cells it covers. `None` when `render` has nothing, or when
+    /// the picture is too big to address, so the caller can fall back to
+    /// text.
     fn place(
         &mut self,
         key: u64,
-        render: impl FnOnce() -> Option<canvas::Image>,
+        render: impl FnOnce() -> Option<(Vec<u8>, usize, usize)>,
     ) -> Option<Vec<Line<'static>>> {
         self.clock += 1;
         if let Some(entry) = self.cache.get_mut(&key) {
             entry.used = self.clock;
             return Some(kitty::placeholder_lines(entry.id, entry.cols, entry.rows));
         }
-        let image = render()?;
-        let (cols, rows) = (image.cols(), image.rows());
+        let (png, cols, rows) = render()?;
         if rows > kitty::MAX_CELLS || cols > kitty::MAX_CELLS {
             return None;
         }
         let id = self.next_id();
         self.pending
-            .push_str(&kitty::transmit(id, &image.to_png(), cols, rows));
+            .push_str(&kitty::transmit(id, &png, cols, rows));
         self.cache.insert(
             key,
             Entry {
@@ -349,6 +375,7 @@ impl Drawings for Graphics {
         // of a picture.
         self.place(key, || {
             canvas::render_image(drawing, theme, cell, fg, max_width, overlay)
+                .map(|image| (image.to_png(), image.cols(), image.rows()))
         })
         .unwrap_or_else(|| canvas::render(drawing, theme, max_width, overlay))
     }
@@ -361,7 +388,11 @@ impl Drawings for Graphics {
         let color = theme::to_rgb(theme.math.fg.unwrap_or(Color::Reset), self.fg);
         let key = math_key(tex, theme, color, max_width);
         let cell = self.cell;
-        let Some(lines) = self.place(key, || math_image(tex, cell, color, max_width)) else {
+        let picture = || {
+            math_image(tex, cell, color, max_width)
+                .map(|image| (image.to_png(), image.cols(), image.rows()))
+        };
+        let Some(lines) = self.place(key, picture) else {
             return render::math_text(tex, theme, max_width);
         };
         let pad = max_width.saturating_sub(lines.first().map_or(0, Line::width)) / 2;
@@ -377,6 +408,51 @@ impl Drawings for Graphics {
             })
             .collect()
     }
+
+    fn manim(&mut self, src: &str, theme: &Theme, max_width: usize) -> Vec<Line<'static>> {
+        let Some(runner) = &self.manim else {
+            return render::manim_text(src, render::MANIM_OFF, max_width, theme);
+        };
+        if !self.pictures {
+            return render::manim_text(src, MANIM_NO_PICTURES, max_width, theme);
+        }
+        let state = if self.blocking {
+            runner.wait(src)
+        } else {
+            runner.state(src)
+        };
+        let frame = match state {
+            manim::State::Ready(frame) => frame,
+            manim::State::Running => {
+                return render::manim_text(src, "rendering with manim…", max_width, theme);
+            }
+            manim::State::Failed(why) => {
+                return render::manim_text(src, &format!("manim: {why}"), max_width, theme);
+            }
+        };
+        let max_width = max_width.min(kitty::MAX_CELLS);
+        let (cols, rows) = manim_cells(&frame, self.cell, max_width);
+        let mut h = DefaultHasher::new();
+        ("manim", runner.key(src), cols, rows).hash(&mut h);
+        let key = h.finish();
+        self.place(key, || Some((frame.png.clone(), cols, rows)))
+            .unwrap_or_else(|| render::manim_text(src, "manim: too big to show", max_width, theme))
+    }
+}
+
+/// What a ```` ```manim ```` block says in a terminal without pictures.
+const MANIM_NO_PICTURES: &str =
+    "manim: scenes are pictures; kitty, Ghostty, WezTerm and Konsole can show them";
+
+/// The cells a manim frame covers: its own size in this terminal's
+/// pixels, no wider than the note, and as many rows as keep its shape.
+fn manim_cells(frame: &manim::Frame, cell: CellSize, max_width: usize) -> (usize, usize) {
+    let (cw, ch) = (cell.width as f32, cell.height as f32);
+    let cols = ((frame.width as f32 / cw).ceil() as usize).clamp(1, max_width.max(1));
+    let rows = (cols as f32 * cw * frame.height as f32 / frame.width.max(1) as f32 / ch)
+        .ceil()
+        .max(1.0) as usize;
+    (cols, rows)
 }
 
 #[cfg(test)]
@@ -423,6 +499,27 @@ mod tests {
         let mut b = Graphics::braille();
         assert!(b.math(tex, &theme, 80)[0].to_string().contains('√'));
         assert!(b.take_pending().is_empty());
+    }
+
+    #[test]
+    fn manim_blocks_say_why_they_are_still_code() {
+        let theme = Theme::default();
+        let last =
+            |lines: Vec<Line<'static>>| lines.last().map(ToString::to_string).unwrap_or_default();
+
+        // Not switched on: the code, and how to switch it on.
+        let mut off = Graphics::kitty(CellSize::new(8, 16), (255, 255, 255));
+        let lines = off.manim("self.add(Circle())", &theme, 60);
+        assert!(lines[0].to_string().contains("manim"), "a code box");
+        assert!(last(lines).contains("--manim"));
+        assert!(off.take_pending().is_empty(), "nothing ran, nothing sent");
+
+        // Switched on, but no pictures here: nothing is run either.
+        let dir = std::env::temp_dir().join("notopod-graphics-test");
+        let mut text =
+            Graphics::braille().with_manim(Some(manim::Manim::new(manim::Config::new(dir))));
+        assert!(last(text.manim("self.add(Circle())", &theme, 60)).contains("kitty"));
+        assert_eq!(text.generation(), 0);
     }
 
     #[test]

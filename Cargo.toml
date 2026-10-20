@@ -29,6 +29,7 @@ math = ["math/typeset"]
 syntax.workspace = true
 graphics.workspace = true
 math.workspace = true
+manim.workspace = true
 notes.workspace = true
 render.workspace = true
 theme.workspace = true
@@ -67,6 +68,7 @@ canvas = { path = "lib/canvas" }
 graphics = { path = "lib/graphics" }
 render = { path = "lib/render" }
 math = { path = "lib/math", default-features = false }
+manim = { path = "lib/manim" }
 notes = { path = "lib/notes" }
 editor = { path = "lib/editor" }
 theme = { path = "lib/theme" }

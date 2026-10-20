@@ -24,8 +24,8 @@ mod inline;
 pub mod wrap;
 
 pub use block::{
-    render_block, render_block_with, render_document, render_document_with, render_list_item,
-    render_list_item_with,
+    manim_text, render_block, render_block_with, render_document, render_document_with,
+    render_list_item, render_list_item_with,
 };
-pub use drawings::{math_text, Braille, Drawings};
+pub use drawings::{math_text, Braille, Drawings, MANIM_OFF};
 pub use inline::render_inlines;

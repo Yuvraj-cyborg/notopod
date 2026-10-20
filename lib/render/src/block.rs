@@ -121,6 +121,9 @@ fn render_block_at(
         BlockKind::CodeBlock { lang, code } if lang.as_deref() == Some("math") => {
             drawings.math(code, theme, width)
         }
+        BlockKind::CodeBlock { lang, code } if lang.as_deref() == Some("manim") => {
+            drawings.manim(code, theme, width)
+        }
         BlockKind::Math(tex) => drawings.math(tex, theme, width),
         BlockKind::CodeBlock { lang, code } => code_block(lang.as_deref(), code, width, theme),
         BlockKind::BlockQuote(blocks) => {
@@ -267,6 +270,17 @@ fn code_block(lang: Option<&str>, code: &str, width: usize, theme: &Theme) -> Ve
     out.push(Line::from(Span::styled(
         format!("╰{}╯", "─".repeat(width - 2)),
         theme.code_border,
+    )));
+    out
+}
+
+/// A ```` ```manim ```` block shown as its code, with a muted line under
+/// it saying why it is not a picture, or what happened to it.
+pub fn manim_text(code: &str, note: &str, width: usize, theme: &Theme) -> Vec<Line<'static>> {
+    let mut out = code_block(Some("manim"), code, width.max(1), theme);
+    out.push(Line::from(Span::styled(
+        fit(&format!("  {note}"), width.max(1)),
+        theme.code_lang,
     )));
     out
 }

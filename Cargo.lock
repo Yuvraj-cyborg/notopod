@@ -651,6 +651,7 @@ version = "0.3.1"
 dependencies = [
  "canvas",
  "crossterm",
+ "manim",
  "math",
  "ratatui",
  "render",
@@ -854,6 +855,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "manim"
+version = "0.3.1"
+dependencies = [
+ "png",
+ "tempfile",
+]
+
+[[package]]
 name = "math"
 version = "0.3.1"
 dependencies = [
@@ -962,6 +971,7 @@ dependencies = [
  "clap",
  "crossterm",
  "graphics",
+ "manim",
  "math",
  "notes",
  "render",
@@ -1982,6 +1992,7 @@ dependencies = [
  "canvas",
  "editor",
  "graphics",
+ "manim",
  "notes",
  "ratatui",
  "render",

@@ -33,6 +33,12 @@ struct Cli {
     #[arg(long, global = true)]
     vim: bool,
 
+    /// Run ```manim blocks with your own manim and show their last frame.
+    /// This executes the Python in them; `[manim] enabled = true` in the
+    /// config file does the same for every run.
+    #[arg(long, global = true)]
+    manim: bool,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -88,15 +94,18 @@ fn main() -> Result<()> {
     let theme = || config::resolve_theme(cli.theme.as_deref(), &config);
     let graphics = || config::resolve_graphics(cli.graphics, &config);
     let vim = config::resolve_vim(cli.vim, &config);
+    let manim = || config::resolve_manim(cli.manim, &config);
 
     match cli.command {
-        None => tui::run(&as_paths(&cli.paths), theme()?, graphics()?, vim),
-        Some(Command::Edit { paths }) => tui::run(&as_paths(&paths), theme()?, graphics()?, vim),
+        None => tui::run(&as_paths(&cli.paths), theme()?, graphics()?, vim, manim()?),
+        Some(Command::Edit { paths }) => {
+            tui::run(&as_paths(&paths), theme()?, graphics()?, vim, manim()?)
+        }
         Some(Command::Render {
             file,
             width,
             no_color,
-        }) => render_note(&file, width, no_color, &theme()?, graphics()?),
+        }) => render_note(&file, width, no_color, &theme()?, graphics()?, manim()?),
         Some(Command::Graph {
             dir,
             width,
@@ -122,10 +131,14 @@ fn render_note(
     no_color: bool,
     theme: &theme::Theme,
     graphics: graphics::Mode,
+    manim: Option<manim::Manim>,
 ) -> Result<()> {
     let text =
         std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
-    let (width, color, mut drawings) = output_setup(width, no_color, graphics);
+    let (width, color, drawings) = output_setup(width, no_color, graphics);
+    // Printing has no later frame to show a scene in: wait for it.
+    let mut drawings = drawings.with_manim(manim);
+    drawings.set_blocking(true);
     let doc = syntax::parse(&text);
     let lines = render::render_document_with(&doc, width, theme, &mut drawings);
     let mut out = std::io::stdout().lock();

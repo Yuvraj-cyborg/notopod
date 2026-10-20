@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 canvas.workspace = true
+manim.workspace = true
 math.workspace = true
 render.workspace = true
 theme.workspace = true
