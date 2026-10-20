@@ -88,20 +88,20 @@ under `lib/` with short names and `publish = false`.
 | `syntax` | pulldown-cmark | `Document`, `Block`, `Inline`; `parse()`; `LineIndex` (byte offset to line). No terminal code at all. |
 | `theme` | ratatui (types), serde, toml | `Theme`: every style, derived from a nine colour `Palette`; the theme file format; built-in themes as embedded TOML. |
 | `math` | tiny-skia; RaTeX and ab_glyph behind `typeset` | `layout`, `render` and `measure` for TeX: RaTeX's layout drawn with our own tiny-skia, in KaTeX's fonts (vendored, OFL 1.1); `to_unicode`, the text form used inline and without pictures. |
-| `manim` | png | `Manim`: renders ` ```manim ` blocks with the user's `manim` on one worker thread, one scene at a time with a timeout; frames cropped and cached on disk and in memory. |
+| `manim` | math, tiny-skia, png | `Manim`: draws ` ```manim ` blocks — natively (`native`: a small Python interpreter over Manim's objects, painted with tiny-skia) when it understands them, otherwise through a warm Python worker with the user's Manim (`engine`, `worker.py`) in the background; frames cropped and cached. |
 | `canvas` | math, theme, tiny-skia, ab_glyph, png, ratatui (types) | The ` ```draw ` language (`parse`, `to_source`); `render_image` (pixels: `sketch.rs` rough strokes, `text.rs` Excalifont labels, `pixel.rs` layout) and `render` (braille: `raster.rs`, `rough.rs`), both with an editing `Overlay`; `expr` and `plot` for `axes` and `plot`. |
 | `graphics` | canvas, math, manim, render, theme, crossterm, rustix | `Graphics`: probes the terminal (kitty graphics, cell size, fg/bg colours), sends PNGs with the kitty protocol, caches them by content, returns placeholder rows; falls back to braille. |
 | `render` | syntax, canvas, math, theme | Block and inline rendering to `ratatui::text::Line`; word wrap; ANSI serialisation for stdout; the `Drawings` trait. |
 | `editor` | ropey | `Editor`: cursor, movement, editing, undo/redo, search, atomic save, `replace_lines`, character ranges (`slice`, `delete_range`, `line_range`). Knows nothing about Markdown except the list-continuation rules in `smart.rs`. |
 | `notes` | canvas | The notes under a folder and the links between them: `scan` (reads each file once, picks out `[[wikilinks]]` and `[text](note.md)`), `Graph`, and `Graph::drawing`, a force-directed layout into a `canvas::Drawing`. |
 | `tui` | all of the above, crossterm | `App`: tabs, the mode state machine (edit / find / save-as / open / confirm / canvas) and what has the keyboard (note / file panel / graph); `view` (rows), `ui` (draw), `canvas_mode`, `files` (the panel), `graph_view`, `links` (the link under the cursor), `vim` (vim keys), `picker` (the theme screen). |
-| `notopod` | tui, graphics, manim, notes, render, theme, clap | The command: `notopod [FILE...]`, `render`, `graph`, `themes`, `config`; reads and writes the config file; `--theme`, `--graphics`, `--vim`, `--manim`. |
+| `notopod` | tui, graphics, manim, notes, render, theme, clap | The command: `notopod [FILE...]`, `render`, `graph`, `themes`, `config`; reads and writes the config file; `--theme`, `--graphics`, `--vim`. |
 
 Dependencies point one way: `notopod -> tui -> {graphics, manim, notes,
 render, canvas, editor, syntax, theme}`, `graphics -> {canvas, math,
 manim, render, theme}`, `render -> {canvas, math, syntax, theme}`, `notes
--> canvas`, `canvas -> {math, theme}`. `syntax`, `editor`, `theme`, `math`
-and `manim` depend on nothing else in the workspace.
+-> canvas`, `canvas -> {math, theme}`, `manim -> math`. `syntax`,
+`editor`, `theme` and `math` depend on nothing else in the workspace.
 
 The binary's `math` feature (on by default) turns on `math/typeset`.
 Without it `math` keeps only `to_unicode`, RaTeX and the fonts are not
@@ -194,20 +194,46 @@ needs, so its bounds, hit test and picture agree.
 
 ### Manim
 
-A ` ```manim ` block is Python, so notopod does not try to understand it.
-`manim::script` makes it a file (adding `from manim import *`, wrapping a
-bare body in a `Scene`), and the worker runs `manim render
---save_last_frame --transparent` in a fresh directory under the cache,
-crops the frame to what was drawn, and keeps it as
-`<hash of text and quality>.png`. `Manim::state` never blocks: a frame
-that is not there yet is queued and reported as `Running`; when the
-worker finishes it bumps `generation`, which the TUI's view cache keys
-on. `notopod render` calls `wait` instead, since it prints once.
+A ` ```manim ` block is Python. Two things can draw it, tried in order.
 
-It is off unless `--manim` or `[manim] enabled` says otherwise, and off
-means the crate is never asked for anything: the block is its code and a
-note. A failure is shown as Python's last error line, and is not retried
-until the block changes or notopod starts again.
+**Natively** (`manim::native`). Most blocks are straight-line code over
+Manim's objects, and that much notopod reads itself: `lex` and `parse`
+turn the block into assignments and calls (unwrapping a `Scene` class),
+`eval` runs them against an arena of mobjects — cubic Bézier paths in
+Manim's units, plus text boxes — with Manim's constructors, defaults,
+placement rules and colours, and `draw` paints the frame with tiny-skia at
+Manim's resolution, typesetting `Text`, `MathTex` and `Tex` with
+`math::render`. Only the last frame is wanted, so an animation is its end
+state. Anything outside that subset is `Unsupported` and goes on to real
+Manim; only what Python would refuse too (an unclosed bracket or string)
+is an error. It is fast enough (well under a frame) to run on every
+keystroke, on the UI thread, and its frames are not written to disk.
+
+**With real Manim** (`manim::engine`). The `manim render` command imports
+Manim afresh and asks PyPI for a newer version before every scene, which
+costs seconds, so instead one Python process (`worker.py`, found from the
+`manim` script's `#!` line or `[manim] python`) imports Manim once and
+forks a child per scene, which renders in-process with an alarm as its
+timeout. Without `fork`, or without a Python to use, the command is run
+per scene (with `--silent`). `manim::script` turns a block into a file.
+Renders run one at a time on a thread of their own, frames are cropped,
+un-premultiplied (Manim writes premultiplied colour into its transparent
+PNGs) and kept as `<hash of text and quality>.png`; the worker starts with
+the first render and exits after two idle minutes.
+
+`Manim::state` never blocks: a frame that is not there yet is queued and
+reported as `Running`; when it lands `generation` moves, which the TUI's
+view cache keys on. `Manim::live` is for the block the cursor is in: it
+waits for a 300 ms pause in the typing, and a render the typing has
+overtaken is cancelled. `view::build` shows that block's frame under its
+source as `Source::Preview` rows, which cursor movement steps over;
+`Graphics` keeps the last good frame up while the next is on its way.
+`notopod render` calls `wait` instead, since it prints once.
+
+`[manim] enabled = false` means the crate is never asked for anything:
+the block is its code and a note. A failure is shown as Python's last
+error line, and is not retried until the block changes or notopod starts
+again.
 
 ### The graph of notes
 
@@ -294,8 +320,8 @@ foreground the terminal reported (or a light grey on a dark background).
 The binary owns configuration (`src/config.rs`): `~/.config/notopod/config.toml`
 (or `$NOTOPOD_CONFIG`, or `$XDG_CONFIG_HOME/notopod/config.toml`) with
 `theme = "..."`, a `[canvas] roughness` override, `[graphics] mode`,
-`[keys] vim` and `[manim]`. `--theme`, `--graphics`, `--vim` and
-`--manim` win over the file. User themes are
+`[keys] vim` and `[manim]`. `--theme`, `--graphics` and `--vim` win over
+the file. User themes are
 `themes/<name>.toml` next to the config file.
 
 ## Other decisions worth knowing

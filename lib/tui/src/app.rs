@@ -207,7 +207,14 @@ impl App {
             if self.quit {
                 return Ok(());
             }
-            if event::poll(Duration::from_millis(250))? {
+            // While a scene renders, look again soon so it shows the moment
+            // it is done.
+            let wait = if self.graphics.busy() {
+                Duration::from_millis(30)
+            } else {
+                Duration::from_millis(250)
+            };
+            if event::poll(wait)? {
                 self.handle_event(event::read()?);
                 // Catch up with whatever else is already waiting, so a held
                 // key does not cost a frame per repeat.
@@ -1259,7 +1266,16 @@ impl App {
 
         let view = self.ensure_view(width);
         let last = view.rows.len().saturating_sub(1);
-        let target = (row as isize + delta).clamp(0, last as isize) as usize;
+        let mut target = (row as isize + delta).clamp(0, last as isize) as usize;
+        // A preview is not text: step over it, or stay put at the edge.
+        while matches!(view.rows[target].source, Source::Preview { .. }) {
+            let next = target as isize + delta.signum();
+            if next < 0 || next > last as isize {
+                target = row;
+                break;
+            }
+            target = next as usize;
+        }
         if target == row {
             // Already at the edge: fall back to plain line movement so Down
             // on the last row of a wrapped line still leaves it.
@@ -1285,6 +1301,10 @@ impl App {
                 let line = if delta < 0 { last } else { first };
                 let text = self.editor().line(line);
                 Position::new(line, view::col_at_x(&text, 0, x))
+            }
+            Source::Preview { after } => {
+                let text = self.editor().line(after);
+                Position::new(after, view::col_at_x(&text, 0, x))
             }
         };
         self.editor_mut().set_cursor(pos);
@@ -1551,8 +1571,10 @@ pub(crate) mod tests {
         )
         .expect("write");
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        // A scene notopod could draw itself goes to manim only like this.
         let runner = manim::Manim::new(manim::Config {
             command: vec![fake.display().to_string()],
+            native: false,
             ..manim::Config::new(dir.path().join("cache"))
         });
         let graphics =

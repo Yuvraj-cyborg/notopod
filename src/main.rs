@@ -33,12 +33,6 @@ struct Cli {
     #[arg(long, global = true)]
     vim: bool,
 
-    /// Run ```manim blocks with your own manim and show their last frame.
-    /// This executes the Python in them; `[manim] enabled = true` in the
-    /// config file does the same for every run.
-    #[arg(long, global = true)]
-    manim: bool,
-
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -94,7 +88,7 @@ fn main() -> Result<()> {
     let theme = || config::resolve_theme(cli.theme.as_deref(), &config);
     let graphics = || config::resolve_graphics(cli.graphics, &config);
     let vim = config::resolve_vim(cli.vim, &config);
-    let manim = || config::resolve_manim(cli.manim, &config);
+    let manim = || config::resolve_manim(&config);
 
     match cli.command {
         None => tui::run(&as_paths(&cli.paths), theme()?, graphics()?, vim, manim()?),

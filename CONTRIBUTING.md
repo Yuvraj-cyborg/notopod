@@ -87,7 +87,7 @@ dependencies. Users get releases, Nix, or `cargo install --git`.
 | `lib/syntax` | Document model, Markdown parser, line index |
 | `lib/canvas` | ` ```draw ` language: model, parser/serialiser; picture renderer (tiny-skia, Excalifont) and braille renderer; expressions and plots |
 | `lib/math` | TeX equations: RaTeX layout drawn with tiny-skia in KaTeX's fonts, and a Unicode form |
-| `lib/manim` | ` ```manim ` blocks: runs Manim in the background, caches the frames |
+| `lib/manim` | ` ```manim ` blocks: drawn natively when notopod understands them, otherwise by a warm Manim worker in the background |
 | `lib/graphics` | Pictures in the terminal: kitty graphics protocol, capability probe, image cache |
 | `lib/render` | Block and inline rendering, wrapping, ANSI output, the `Drawings` trait |
 | `lib/theme` | `Theme`, `Palette`, style strings, built-in theme TOML files |

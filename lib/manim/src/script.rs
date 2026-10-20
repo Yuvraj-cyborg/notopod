@@ -25,11 +25,22 @@ pub fn script(src: &str) -> (String, String) {
         return (format!("{header}{src}"), scene);
     }
     let body = dedent(src);
-    let mut code = format!("{header}class {WRAPPER}(Scene):\n    def construct(self):\n");
-    if body.trim().is_empty() {
+    // `from x import *` is not allowed inside a function, so the body's
+    // own imports go above the class.
+    let is_import = |l: &str| l.starts_with("import ") || l.starts_with("from ");
+    let mut code = header.to_owned();
+    for line in body.lines().filter(|l| is_import(l)) {
+        code.push_str(line);
+        code.push('\n');
+    }
+    let body: Vec<&str> = body.lines().filter(|l| !is_import(l)).collect();
+    code.push_str("class ");
+    code.push_str(WRAPPER);
+    code.push_str("(Scene):\n    def construct(self):\n");
+    if body.iter().all(|l| l.trim().is_empty()) {
         code.push_str("        pass\n");
     }
-    for line in body.lines() {
+    for line in body {
         if line.trim().is_empty() {
             code.push('\n');
         } else {
@@ -93,6 +104,14 @@ mod tests {
             "{code}"
         );
         assert!(script("").0.contains("        pass\n"));
+
+        // Imports in a body move out of `construct`, where `*` is illegal.
+        let (code, _) =
+            script("from numpy import *\nimport random\nself.add(Dot(array([1, 0, 0])))\n");
+        assert_eq!(
+            code,
+            "from manim import *\n\nfrom numpy import *\nimport random\nclass NotopodScene(Scene):\n    def construct(self):\n        self.add(Dot(array([1, 0, 0])))\n"
+        );
     }
 
     #[test]

@@ -28,6 +28,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::io::IsTerminal;
+use std::sync::Arc;
 use std::time::Duration;
 
 use canvas::{CellSize, Drawing, Overlay};
@@ -90,10 +91,13 @@ pub struct Graphics {
     pending: String,
     clock: u64,
     ids: u64,
-    /// Renders ```` ```manim ```` blocks, when the user has allowed it.
+    /// Renders ```` ```manim ```` blocks, unless the user switched it off.
     manim: Option<manim::Manim>,
     /// Wait for manim rather than showing a placeholder, for printing.
     blocking: bool,
+    /// The last frame the block being typed in showed, and that block's
+    /// first line: kept up while its next frame is on its way.
+    live: Option<(usize, u64, Arc<manim::Frame>)>,
 }
 
 impl Default for Graphics {
@@ -128,6 +132,7 @@ impl Graphics {
             ids: seed | 1,
             manim: None,
             blocking: false,
+            live: None,
         }
     }
 
@@ -149,6 +154,12 @@ impl Graphics {
     /// ready. A screen caching what it drew redraws when this changes.
     pub fn generation(&self) -> u64 {
         self.manim.as_ref().map_or(0, manim::Manim::generation)
+    }
+
+    /// Whether something is rendering in the background, so the screen
+    /// should look again soon rather than wait for a key.
+    pub fn busy(&self) -> bool {
+        self.manim.as_ref().is_some_and(manim::Manim::busy)
     }
 
     /// Decides how to draw, asking the terminal in [`Mode::Auto`].
@@ -430,13 +441,70 @@ impl Drawings for Graphics {
                 return render::manim_text(src, &format!("manim: {why}"), max_width, theme);
             }
         };
-        let max_width = max_width.min(kitty::MAX_CELLS);
-        let (cols, rows) = manim_cells(&frame, self.cell, max_width);
-        let mut h = DefaultHasher::new();
-        ("manim", runner.key(src), cols, rows).hash(&mut h);
-        let key = h.finish();
-        self.place(key, || Some((frame.png.clone(), cols, rows)))
+        let key = runner.key(src);
+        self.manim_picture(key, &frame, max_width)
             .unwrap_or_else(|| render::manim_text(src, "manim: too big to show", max_width, theme))
+    }
+
+    fn manim_live(
+        &mut self,
+        block: usize,
+        src: &str,
+        theme: &Theme,
+        max_width: usize,
+    ) -> Vec<Line<'static>> {
+        let Some(runner) = &self.manim else {
+            return Vec::new();
+        };
+        if !self.pictures {
+            return Vec::new();
+        }
+        let key = runner.key(src);
+        let (shown, note) = match runner.live(src) {
+            manim::State::Ready(frame) => {
+                self.live = Some((block, key, Arc::clone(&frame)));
+                (Some((key, frame)), None)
+            }
+            state => {
+                // Until the new frame is there, the last one stays up.
+                let last = self
+                    .live
+                    .as_ref()
+                    .filter(|(b, _, _)| *b == block)
+                    .map(|(_, k, f)| (*k, Arc::clone(f)));
+                let note = match state {
+                    manim::State::Failed(why) => Span::styled(
+                        format!("  manim: {why}"),
+                        ratatui::style::Style::new().fg(theme.palette.red),
+                    ),
+                    _ => Span::styled("  rendering…", theme.code_lang),
+                };
+                (last, Some(note))
+            }
+        };
+        let mut lines = shown
+            .and_then(|(key, frame)| self.manim_picture(key, &frame, max_width))
+            .unwrap_or_default();
+        if let Some(note) = note {
+            lines.push(Line::from(note));
+        }
+        lines
+    }
+}
+
+impl Graphics {
+    /// A frame at its own size, no wider than `max_width` cells.
+    fn manim_picture(
+        &mut self,
+        key: u64,
+        frame: &manim::Frame,
+        max_width: usize,
+    ) -> Option<Vec<Line<'static>>> {
+        let max_width = max_width.min(kitty::MAX_CELLS);
+        let (cols, rows) = manim_cells(frame, self.cell, max_width);
+        let mut h = DefaultHasher::new();
+        ("manim", key, cols, rows).hash(&mut h);
+        self.place(h.finish(), || Some((frame.png.clone(), cols, rows)))
     }
 }
 
@@ -507,19 +575,56 @@ mod tests {
         let last =
             |lines: Vec<Line<'static>>| lines.last().map(ToString::to_string).unwrap_or_default();
 
-        // Not switched on: the code, and how to switch it on.
+        // Switched off: the code, and where it was switched off.
         let mut off = Graphics::kitty(CellSize::new(8, 16), (255, 255, 255));
         let lines = off.manim("self.add(Circle())", &theme, 60);
         assert!(lines[0].to_string().contains("manim"), "a code box");
-        assert!(last(lines).contains("--manim"));
+        assert!(last(lines).contains("enabled = false"));
         assert!(off.take_pending().is_empty(), "nothing ran, nothing sent");
+        let live = off.manim_live(0, "self.add(Circle())", &theme, 60);
+        assert!(live.is_empty(), "{live:?}");
 
-        // Switched on, but no pictures here: nothing is run either.
+        // On, but no pictures here: nothing is run either.
         let dir = std::env::temp_dir().join("notopod-graphics-test");
         let mut text =
             Graphics::braille().with_manim(Some(manim::Manim::new(manim::Config::new(dir))));
         assert!(last(text.manim("self.add(Circle())", &theme, 60)).contains("kitty"));
+        let live = text.manim_live(0, "self.add(Circle())", &theme, 60);
+        assert!(live.is_empty(), "{live:?}");
         assert_eq!(text.generation(), 0);
+        assert!(!text.busy());
+    }
+
+    #[test]
+    fn the_scene_being_typed_keeps_its_last_frame_while_it_is_broken() {
+        let theme = Theme::default();
+        let dir = std::env::temp_dir().join("notopod-graphics-live");
+        let mut g = Graphics::kitty(CellSize::new(8, 16), (255, 255, 255)).with_manim(Some(
+            manim::Manim::new(manim::Config {
+                command: vec!["/nonexistent/manim".to_owned()],
+                ..manim::Config::new(dir)
+            }),
+        ));
+        // Drawn natively, so there at once.
+        let first = g.manim_live(3, "self.add(Circle())", &theme, 60);
+        assert!(first[0].spans[0].content.starts_with(kitty::PLACEHOLDER));
+        assert!(g.take_pending().starts_with("\x1b_Ga=T"));
+
+        // Half typed: the circle stays up, the error under it.
+        let broken = g.manim_live(3, "self.add(Circle(", &theme, 60);
+        assert_eq!(broken.len(), first.len() + 1);
+        assert_eq!(
+            broken[0].to_string(),
+            first[0].to_string(),
+            "the same picture"
+        );
+        assert!(broken
+            .last()
+            .is_some_and(|l| l.to_string().contains("SyntaxError")));
+
+        // Another block has no frame of this one's to show.
+        let elsewhere = g.manim_live(9, "self.add(Circle(", &theme, 60);
+        assert_eq!(elsewhere.len(), 1, "{elsewhere:?}");
     }
 
     #[test]
