@@ -25,6 +25,7 @@
 
 mod crop;
 mod engine;
+mod native;
 mod script;
 
 use std::collections::hash_map::DefaultHasher;
@@ -73,10 +74,14 @@ pub struct Config {
     pub timeout: Duration,
     /// Where finished frames are kept between runs.
     pub cache_dir: PathBuf,
+    /// Draw the scenes notopod understands itself, and only send the
+    /// rest to manim.
+    pub native: bool,
 }
 
 impl Config {
-    /// `manim` at medium quality, a minute per scene, frames in `cache_dir`.
+    /// `manim` at medium quality, a minute per scene, frames in
+    /// `cache_dir`, simple scenes drawn natively.
     pub fn new(cache_dir: PathBuf) -> Self {
         Self {
             command: vec!["manim".to_owned()],
@@ -84,6 +89,7 @@ impl Config {
             quality: 'm',
             timeout: Duration::from_secs(60),
             cache_dir,
+            native: true,
         }
     }
 }
@@ -214,7 +220,7 @@ impl Manim {
     /// a cached frame is loaded from disk, or a render is queued.
     pub fn state(&self, src: &str) -> State {
         let key = self.key(src);
-        if let Some(state) = self.known(key) {
+        if let Some(state) = self.known(key).or_else(|| self.native(key, src)) {
             return state;
         }
         let tick = self.shared.clock.fetch_add(1, Ordering::Relaxed);
@@ -230,6 +236,11 @@ impl Manim {
     pub fn live(&self, src: &str) -> State {
         let key = self.key(src);
         if let Some(state) = self.known(key) {
+            return state;
+        }
+        if let Some(state) = self.native(key, src) {
+            // Drawn already: whatever manim was doing for older text can stop.
+            *self.shared.live() = None;
             return state;
         }
         let mut live = self.shared.live();
@@ -258,6 +269,31 @@ impl Manim {
                 done => return done,
             }
         }
+    }
+
+    /// The block drawn here, without manim, when notopod understands all
+    /// of it; `None` sends it to manim.
+    fn native(&self, key: u64, src: &str) -> Option<State> {
+        if !self.config.native {
+            return None;
+        }
+        let result = match native::render(src, self.config.quality) {
+            Ok(png) => png_size(&png)
+                .map(|(width, height)| Arc::new(Frame { png, width, height }))
+                .ok_or_else(|| "could not draw this scene".to_owned()),
+            Err(native::Error::Unsupported(_)) => return None,
+            Err(native::Error::Syntax(e)) => Err(format!("SyntaxError: {e}")),
+            Err(native::Error::Empty) => {
+                Err("nothing on screen: show something with self.add or self.play".to_owned())
+            }
+        };
+        let state = match &result {
+            Ok(frame) => State::Ready(Arc::clone(frame)),
+            Err(e) => State::Failed(e.clone()),
+        };
+        let tick = self.shared.clock.fetch_add(1, Ordering::Relaxed);
+        insert(&mut self.shared.jobs(), key, Job::Done(result), tick);
+        Some(state)
     }
 
     /// What is known about `key` without rendering: a finished job, a
@@ -331,7 +367,7 @@ fn work(rx: &Receiver<Message>, shared: &Shared, config: &Config) {
             let wanted = || !is_live || shared.live().as_ref().is_some_and(|l| l.key == key);
             match render(running, config, key, &src, &wanted) {
                 Outcome::Frame(png) => shared.finish(key, frame(config, key, png)),
-                Outcome::Failed(why) => shared.finish(key, Err(why)),
+                Outcome::Failed(why) => shared.finish(key, Err(without_manim(config, &src, why))),
                 // A newer live block is waiting; it is taken next.
                 Outcome::Cancelled => {}
             }
@@ -366,6 +402,19 @@ fn work(rx: &Receiver<Message>, shared: &Shared, config: &Config) {
             }
             Err(RecvTimeoutError::Disconnected) => return,
         }
+    }
+}
+
+/// When manim is not installed, what in the block needed it.
+fn without_manim(config: &Config, src: &str, why: String) -> String {
+    if !config.native || !why.contains("not found") {
+        return why;
+    }
+    match native::render(src, config.quality) {
+        Err(native::Error::Unsupported(what)) => format!(
+            "notopod draws simple scenes itself, but not {what}; that needs Manim (https://www.manim.community)"
+        ),
+        _ => why,
     }
 }
 
@@ -463,6 +512,7 @@ mod tests {
             quality: 'l',
             timeout: Duration::from_secs(5),
             cache_dir: dir.join("cache"),
+            native: false,
         }
     }
 
@@ -497,6 +547,7 @@ done"#,
             quality: 'l',
             timeout: Duration::from_secs(5),
             cache_dir: dir.join("cache"),
+            native: false,
         }
     }
 
@@ -641,6 +692,50 @@ done"#,
             ..fake_manim(dir.path(), "sleep 5")
         });
         assert!(matches!(slow.wait("y"), State::Failed(e) if e.contains("stopped")));
+    }
+
+    #[test]
+    fn simple_scenes_are_drawn_without_manim() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let m = Manim::new(Config {
+            command: vec!["/nonexistent/manim".to_owned()],
+            python: Some(PathBuf::from("/nonexistent/python")),
+            ..Config::new(dir.path().join("cache"))
+        });
+        assert!(
+            matches!(m.state("self.add(Circle())"), State::Ready(_)),
+            "at once"
+        );
+        assert!(matches!(m.live("self.add(Square())"), State::Ready(_)));
+        assert!(!m.busy(), "nothing was started");
+        assert!(
+            matches!(m.live("self.add(Square("), State::Failed(e) if e.starts_with("SyntaxError"))
+        );
+        // What notopod cannot draw goes to manim, which is missing here,
+        // and the message says what needed it.
+        let State::Failed(why) = m.wait("for i in range(3):\n    self.add(Dot())") else {
+            panic!("not failed");
+        };
+        assert!(
+            why.contains("`for`") && why.contains("needs Manim"),
+            "{why}"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn what_notopod_cannot_draw_goes_to_manim() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let png = dir.path().join("frame.png");
+        fs::write(&png, tiny_png()).expect("write");
+        let m = Manim::new(Config {
+            native: true,
+            ..fake_worker(dir.path(), &png, "0")
+        });
+        assert!(matches!(m.state("self.add(Circle())"), State::Ready(_)));
+        assert_eq!(lines(&dir.path().join("starts")), 0, "drawn natively");
+        assert!(matches!(m.wait("self.add(ThreeDAxes())"), State::Ready(_)));
+        assert_eq!(lines(&dir.path().join("renders")), 1, "by the worker");
     }
 
     #[test]

@@ -1571,8 +1571,10 @@ pub(crate) mod tests {
         )
         .expect("write");
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        // A scene notopod could draw itself goes to manim only like this.
         let runner = manim::Manim::new(manim::Config {
             command: vec![fake.display().to_string()],
+            native: false,
             ..manim::Config::new(dir.path().join("cache"))
         });
         let graphics =

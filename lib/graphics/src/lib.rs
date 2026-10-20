@@ -596,6 +596,38 @@ mod tests {
     }
 
     #[test]
+    fn the_scene_being_typed_keeps_its_last_frame_while_it_is_broken() {
+        let theme = Theme::default();
+        let dir = std::env::temp_dir().join("notopod-graphics-live");
+        let mut g = Graphics::kitty(CellSize::new(8, 16), (255, 255, 255)).with_manim(Some(
+            manim::Manim::new(manim::Config {
+                command: vec!["/nonexistent/manim".to_owned()],
+                ..manim::Config::new(dir)
+            }),
+        ));
+        // Drawn natively, so there at once.
+        let first = g.manim_live(3, "self.add(Circle())", &theme, 60);
+        assert!(first[0].spans[0].content.starts_with(kitty::PLACEHOLDER));
+        assert!(g.take_pending().starts_with("\x1b_Ga=T"));
+
+        // Half typed: the circle stays up, the error under it.
+        let broken = g.manim_live(3, "self.add(Circle(", &theme, 60);
+        assert_eq!(broken.len(), first.len() + 1);
+        assert_eq!(
+            broken[0].to_string(),
+            first[0].to_string(),
+            "the same picture"
+        );
+        assert!(broken
+            .last()
+            .is_some_and(|l| l.to_string().contains("SyntaxError")));
+
+        // Another block has no frame of this one's to show.
+        let elsewhere = g.manim_live(9, "self.add(Circle(", &theme, 60);
+        assert_eq!(elsewhere.len(), 1, "{elsewhere:?}");
+    }
+
+    #[test]
     fn braille_mode_never_queues_output() {
         let mut g = Graphics::braille();
         let lines = g.draw(&drawing("rect 0,0 6x2\n"), &Theme::default(), 80, None);

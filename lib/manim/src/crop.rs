@@ -22,10 +22,52 @@ pub fn crop(png: &[u8]) -> Option<Vec<u8>> {
     }
     let (w, h) = (info.width as usize, info.height as usize);
     let stride = info.line_size;
+    let (left, top, right, bottom) = bounds(w, h, |x, y| buf[y * stride + x * 4 + 3])?;
+    let (cw, ch) = (right - left + 1, bottom - top + 1);
+    let mut pixels = Vec::with_capacity(cw * ch * 4);
+    for y in top..=bottom {
+        let row = y * stride;
+        pixels.extend_from_slice(&buf[row + left * 4..row + (right + 1) * 4]);
+    }
+    demultiply(&mut pixels);
+    encode(cw, ch, &pixels)
+}
+
+/// Manim writes its transparent frames with the colour already
+/// multiplied by the alpha, so anything see-through comes out too dark
+/// once a terminal blends it again. Undone when every pixel says so (no
+/// channel brighter than its alpha); a frame that is not like that is
+/// left alone.
+fn demultiply(pixels: &mut [u8]) {
+    let premultiplied = pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .all(|p| p[0] <= p[3] && p[1] <= p[3] && p[2] <= p[3]);
+    if !premultiplied {
+        return;
+    }
+    for p in pixels.as_chunks_mut::<4>().0 {
+        let a = u16::from(p[3]);
+        if a > 0 && a < 255 {
+            for c in &mut p[..3] {
+                *c = ((u16::from(*c) * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
+    }
+}
+
+/// The box of drawn pixels in a `w`×`h` frame plus the margin, as
+/// `(left, top, right, bottom)`, inclusive; `None` when nothing is drawn.
+pub(crate) fn bounds(
+    w: usize,
+    h: usize,
+    alpha: impl Fn(usize, usize) -> u8,
+) -> Option<(usize, usize, usize, usize)> {
     let (mut left, mut top, mut right, mut bottom) = (w, h, 0, 0);
     for y in 0..h {
         for x in 0..w {
-            if buf[y * stride + x * 4 + 3] > EMPTY {
+            if alpha(x, y) > EMPTY {
                 left = left.min(x);
                 right = right.max(x);
                 top = top.min(y);
@@ -37,22 +79,24 @@ pub fn crop(png: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     let margin = w.max(h) * 4 / 100;
-    let (left, top) = (left.saturating_sub(margin), top.saturating_sub(margin));
-    let (right, bottom) = ((right + margin).min(w - 1), (bottom + margin).min(h - 1));
-    let (cw, ch) = (right - left + 1, bottom - top + 1);
-    let mut pixels = Vec::with_capacity(cw * ch * 4);
-    for y in top..=bottom {
-        let row = y * stride;
-        pixels.extend_from_slice(&buf[row + left * 4..row + (right + 1) * 4]);
-    }
+    Some((
+        left.saturating_sub(margin),
+        top.saturating_sub(margin),
+        (right + margin).min(w - 1),
+        (bottom + margin).min(h - 1),
+    ))
+}
+
+/// Straight RGBA pixels as a PNG.
+pub(crate) fn encode(w: usize, h: usize, pixels: &[u8]) -> Option<Vec<u8>> {
     let mut out = Vec::new();
-    let mut encoder = png::Encoder::new(&mut out, cw as u32, ch as u32);
+    let mut encoder = png::Encoder::new(&mut out, w as u32, h as u32);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     encoder.set_compression(png::Compression::Fast);
     encoder
         .write_header()
-        .and_then(|mut wr| wr.write_image_data(&pixels))
+        .and_then(|mut wr| wr.write_image_data(pixels))
         .ok()?;
     Some(out)
 }
@@ -90,6 +134,16 @@ mod tests {
         let cropped = crop(&frame).expect("cropped");
         // 21×11 of drawing and 4 pixels of margin on each side.
         assert_eq!(size(&cropped), (29, 19));
+    }
+
+    #[test]
+    fn premultiplied_colour_is_undone_and_straight_colour_kept() {
+        let mut manim = vec![35, 78, 88, 102, 255, 255, 255, 255];
+        demultiply(&mut manim);
+        assert_eq!(&manim[..4], &[88, 195, 220, 102], "BLUE at 0.4, as meant");
+        let mut straight = vec![88, 195, 220, 102, 0, 0, 0, 0];
+        demultiply(&mut straight);
+        assert_eq!(&straight[..4], &[88, 195, 220, 102], "already straight");
     }
 
     #[test]

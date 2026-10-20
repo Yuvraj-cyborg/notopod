@@ -858,8 +858,10 @@ dependencies = [
 name = "manim"
 version = "0.4.0"
 dependencies = [
+ "math",
  "png",
  "tempfile",
+ "tiny-skia",
 ]
 
 [[package]]

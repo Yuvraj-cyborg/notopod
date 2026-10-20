@@ -9,9 +9,12 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+math.workspace = true
 png.workspace = true
+tiny-skia.workspace = true
 
 [dev-dependencies]
+math = { workspace = true, features = ["typeset"] }
 tempfile.workspace = true
 
 [lints]
