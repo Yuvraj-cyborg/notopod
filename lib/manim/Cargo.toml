@@ -1,6 +1,6 @@
 [package]
 name = "manim"
-description = "Real Manim scenes in notopod notes: rendered in the background with the user's own manim, cached on disk"
+description = "Manim scenes in notopod notes: drawn natively when understood, otherwise by the user's own manim in the background"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

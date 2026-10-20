@@ -32,8 +32,8 @@ A Markdown editor for the terminal. One binary, no runtime, about 4 MB.
   Excalifont — painted over the cells the block occupies. Terminals without
   the kitty graphics protocol get the same shapes in braille dots.
 - **Equations, typeset.** `$$…$$` is set in KaTeX's fonts as a picture,
-  a drawing can plot functions on axes, and if you have Manim, a
-  ` ```manim ` block shows the scene it draws.
+  a drawing can plot functions on axes, and a ` ```manim ` block shows
+  the scene it draws, live as you type it.
 - **A folder, not a file.** Tabs, a file panel, `[[links]]` you can follow,
   and a graph of how your notes connect.
 - **Yours to keep.** Plain `.md` files, and a drawing is a short, readable
@@ -53,7 +53,7 @@ goes, or to pin a version:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Yuvraj-cyborg/notopod/main/install.sh \
-  | sh -s -- --to /usr/local/bin --version v0.4.0
+  | sh -s -- --to /usr/local/bin --version v0.5.0
 ```
 
 If you would rather not pipe the internet into a shell — fair — the script
@@ -210,35 +210,49 @@ A drawing takes three more statements, borrowed from
 function of `x` on the axes above it, `math` puts a formula anywhere.
 Ticks and their numbers place themselves.
 
-### Real Manim
+### Manim
 
-For anything those cannot say, a ` ```manim ` block holds Manim code — a
-whole `Scene`, or just the body of `construct`:
+A ` ```manim ` block holds Manim code — a whole `Scene`, or just the body
+of `construct` — and shows the scene's last frame:
 
     ```manim
-    circle = Circle(color=BLUE).set_fill(BLUE, opacity=0.4)
-    square = Square(color=YELLOW).rotate(PI / 4).next_to(circle, RIGHT)
-    self.add(circle, square, Text("hello").next_to(circle, DOWN))
+    ax = Axes(x_range=[-4, 4, 1], y_range=[-1.5, 1.5, 1], x_length=8, y_length=3)
+    wave = ax.plot(lambda x: np.sin(x), color=BLUE)
+    label = ax.get_graph_label(wave, r"\sin x", x_val=PI / 2, direction=UP)
+    dot = Dot(ax.c2p(PI / 2, 1), color=YELLOW)
+    eq = MathTex(r"\int_0^{\pi} \sin x \, dx = 2").next_to(ax, DOWN)
+    self.play(Create(ax), Create(wave), Write(label), FadeIn(dot), Write(eq))
     ```
 
-notopod runs your `manim` in the background and shows the scene's last
-frame in place of the code. Typing never waits for it, and frames are
-cached, so a note you open again shows its scenes at once.
+![The block above, rendered: axes with a blue sine wave, its label, a yellow dot on the peak, and the integral below](docs/manim.png)
 
-It is off until you turn it on, because it runs the Python in the note.
-Only turn it on for notes you trust: `--manim` for one run, or
+Blocks like that one notopod draws itself, in Rust, in a few
+milliseconds and without Python or LaTeX: Manim's shapes, text, formulas,
+groups and axes, placed and styled with Manim's own defaults. With the
+cursor in the block, the scene sits under the code and redraws as you
+type.
+
+Anything more — loops, functions, 3D, other imports — goes to your own
+Manim (`uv tool install manim` or `pip install manim`; `MathTex` there
+needs LaTeX). notopod keeps one Python with Manim loaded, so a scene takes
+tens of milliseconds rather than seconds, renders it in the background
+while you type, and caches the frame on disk. That Python starts only
+when a scene needs it, and goes after two minutes without one.
+
+That runs the Python in your notes, so open notes you trust. To turn it
+off, or tune it:
 
 ```toml
 [manim]
-enabled = true
-command = "manim"    # or "uv run manim", or a full path
+enabled = true       # false: show ```manim blocks as code
+native = true        # false: send every scene to real Manim
+command = "manim"    # or "python -m manim", or a full path
+python = "..."       # the Python Manim is in, if `command` hides it (uv run manim)
 quality = "medium"   # low, medium or high
 timeout = 60         # seconds per scene
 ```
 
-Manim itself is `uv tool install manim` or `pip install manim`;
-`MathTex` and `Tex` also need LaTeX. Until it is on, or in a terminal
-without pictures, the block shows as code.
+In a terminal without pictures the block shows as code.
 
 ## Links and the graph
 
@@ -274,7 +288,7 @@ mode = "auto"        # auto | kitty | braille
 vim = false
 
 [manim]
-enabled = false      # run ```manim blocks (see above)
+enabled = true       # draw ```manim blocks (see above)
 ```
 
 `default` borrows your terminal's own colours, so notopod looks like the
@@ -302,7 +316,7 @@ frame).
 
 One Cargo workspace: the `notopod` binary at the root and library crates
 under `lib/` — `syntax` parses, `canvas` draws, `math` typesets, `manim`
-runs Manim, `graphics` puts pictures on the terminal, `render` styles and
+draws Manim scenes, `graphics` puts pictures on the terminal, `render` styles and
 wraps, `theme` colours, `editor` holds the text, `notes` finds the links,
 `tui` runs the screen. `cargo build --no-default-features` leaves the
 typesetting out: a 2 MB binary that writes equations as Unicode.
