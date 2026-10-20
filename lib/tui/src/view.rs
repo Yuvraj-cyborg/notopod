@@ -34,6 +34,12 @@ pub enum Source {
         /// Last buffer line of the block.
         last: usize,
     },
+    /// What the block being typed in looks like, shown under its source
+    /// (a ```` ```manim ```` scene). Not text: the cursor passes over it.
+    Preview {
+        /// The block's last buffer line, which the preview follows.
+        after: usize,
+    },
 }
 
 /// One screen row.
@@ -101,6 +107,10 @@ pub fn build(
     };
     let cursor = editor.cursor();
     let line_count = editor.len_lines();
+    let typing = override_block
+        .is_none()
+        .then(|| live_block(doc, &segments, cursor.line))
+        .flatten();
 
     let mut rows: Vec<Row> = Vec::new();
     let mut cursor_pos = (0, 0);
@@ -113,20 +123,7 @@ pub fn build(
         }
         if let Some(o) = override_block.filter(|o| o.first == line) {
             let last = o.last.min(line_count - 1).max(o.first);
-            let source = Source::Rendered {
-                first: o.first,
-                last,
-            };
-            let first_row = rows.len();
-            if o.lines.is_empty() {
-                rows.push(Row {
-                    line: Line::default(),
-                    source,
-                });
-            }
-            rows.extend(o.lines.iter().cloned().map(|line| Row { line, source }));
-            let row = o.cursor.1.min(rows.len() - first_row - 1);
-            cursor_pos = (first_row + row, o.cursor.0);
+            cursor_pos = push_override(&mut rows, o, last);
             line = last + 1;
             continue;
         }
@@ -180,6 +177,15 @@ pub fn build(
             }
             cursor_pos = (first_row + r, x);
         }
+        if let Some((first, last, src)) = typing.filter(|(_, last, _)| *last == line) {
+            let source = Source::Preview { after: last };
+            rows.extend(
+                drawings
+                    .manim_live(first, src, theme, width)
+                    .into_iter()
+                    .map(|line| Row { line, source }),
+            );
+        }
         line += 1;
     }
 
@@ -197,6 +203,47 @@ pub fn build(
     View {
         rows,
         cursor: cursor_pos,
+    }
+}
+
+/// Shows an [`Override`]'s rows for the block ending at `last`, and
+/// answers where its cursor lands.
+fn push_override(rows: &mut Vec<Row>, o: &Override<'_>, last: usize) -> (usize, usize) {
+    let source = Source::Rendered {
+        first: o.first,
+        last,
+    };
+    let first_row = rows.len();
+    if o.lines.is_empty() {
+        rows.push(Row {
+            line: Line::default(),
+            source,
+        });
+    }
+    rows.extend(o.lines.iter().cloned().map(|line| Row { line, source }));
+    let row = o.cursor.1.min(rows.len() - first_row - 1);
+    (first_row + row, o.cursor.0)
+}
+
+/// The ```` ```manim ```` block the cursor is in, if it is in one: its
+/// first and last lines and its code.
+fn live_block<'d>(
+    doc: &'d Document,
+    segments: &[Segment],
+    cursor_line: usize,
+) -> Option<(usize, usize, &'d str)> {
+    let seg = segments
+        .iter()
+        .find(|s| (s.first..=s.last).contains(&cursor_line))?;
+    let Target::Block(bi) = seg.target else {
+        return None;
+    };
+    match &doc.blocks[bi].kind {
+        BlockKind::CodeBlock {
+            lang: Some(lang),
+            code,
+        } if lang == manim::LANG => Some((seg.first, seg.last, code)),
+        _ => None,
     }
 }
 
@@ -412,6 +459,79 @@ mod tests {
             v.rows[3].source,
             Source::Rendered { first: 3, last: 3 }
         ));
+    }
+
+    /// Shows a two-row "picture" under a live manim block.
+    struct Scenes;
+
+    impl Drawings for Scenes {
+        fn draw(
+            &mut self,
+            drawing: &canvas::Drawing,
+            theme: &Theme,
+            max_width: usize,
+            overlay: Option<&canvas::Overlay<'_>>,
+        ) -> Vec<Line<'static>> {
+            render::Braille.draw(drawing, theme, max_width, overlay)
+        }
+
+        fn manim_live(
+            &mut self,
+            block: usize,
+            src: &str,
+            _: &Theme,
+            _: usize,
+        ) -> Vec<Line<'static>> {
+            vec![
+                Line::from(format!("scene@{block}")),
+                Line::from(src.trim().to_owned()),
+            ]
+        }
+    }
+
+    #[test]
+    fn the_manim_block_being_typed_shows_its_scene_under_its_source() {
+        let text = "intro\n\n```manim\nself.add(Circle())\n```\nafter\n";
+        let mut editor = Editor::from_text(text);
+        editor.set_cursor(Position::new(3, 4));
+        let src = editor.text();
+        let doc = syntax::parse(&src);
+        let index = LineIndex::new(&src);
+        let build_at = |editor: &Editor| {
+            build(
+                editor,
+                &doc,
+                &index,
+                40,
+                true,
+                &Theme::default(),
+                None,
+                &mut Scenes,
+            )
+        };
+        let v = build_at(&editor);
+        assert_eq!(
+            texts(&v),
+            vec![
+                "intro",
+                "",
+                "```manim",
+                "self.add(Circle())",
+                "```",
+                "scene@2",
+                "self.add(Circle())",
+                "after",
+                ""
+            ]
+        );
+        assert_eq!(v.cursor, (3, 4), "the cursor stays on the source");
+        assert!(matches!(v.rows[5].source, Source::Preview { after: 4 }));
+
+        // Anywhere else, the block is rendered as usual and nothing is
+        // shown twice.
+        editor.set_cursor(Position::new(0, 0));
+        let v = build_at(&editor);
+        assert!(!texts(&v).iter().any(|t| t.starts_with("scene@")));
     }
 
     #[test]
