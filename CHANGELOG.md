@@ -7,6 +7,41 @@ workspace share one version number.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-20
+
+### Added
+
+- Equations. `$$…$$` on its own line, and a ```` ```math ```` block, are
+  typeset as pictures: laid out by RaTeX, drawn in KaTeX's fonts at the
+  terminal's resolution, centred, in the theme's colour (`\color` is
+  honoured). Math inside a sentence, `$x^2$`, stays on its line as
+  Unicode — `x = (−b ± √(b²−4ac))/(2a)` — and so does display math where
+  there are no pictures. `$5 and $10` is still money. The new `math` theme
+  style colours it.
+- Plots and formulas in drawings, after Manim's objects: `axes X,Y WxH
+  x=A..B y=C..D` (and `plane`, with a grid), `plot "sin(x)" "\sin x"` on
+  the axes above it, and `math X,Y "tex"` for a formula anywhere. Ticks
+  and their numbers place themselves, curves break at asymptotes and stop
+  at the edges, a plot's label is typeset at the end of its curve, and
+  moving the axes moves their plots. Expressions read like maths: `2x`,
+  `sin x`, `|x|`, `π`, `e^(-x^2)`. In braille, curves are dots and
+  formulas Unicode.
+- Real Manim, off by default. A ```` ```manim ```` block holds Manim code
+  — a `Scene`, or just the body of `construct` — and with `--manim` or
+  `[manim] enabled = true` it shows the scene's last frame, rendered by
+  your own `manim` in the background so typing never waits, cropped to
+  what was drawn, and cached on disk so a note opened again shows its
+  scenes at once. `command`, `quality` and `timeout` tune it. It runs the
+  Python in the note, which is why it is off: until it is on, the block is
+  its code with a line saying how. Failures show Python's last error
+  line.
+
+### Changed
+
+- The binary is about 4 MB, up from 2: the equation layout and its fonts.
+  `cargo build --no-default-features` leaves them out and writes
+  equations as Unicode instead.
+
 ## [0.3.1] - 2026-09-11
 
 ### Added
@@ -195,7 +230,8 @@ First release. A working editor with live preview; no diagram language yet.
 - CI on Linux, macOS and Windows; tagged releases build binaries for five
   targets.
 
-[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.1.2...v0.2.1
