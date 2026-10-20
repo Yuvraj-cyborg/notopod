@@ -382,14 +382,12 @@ fn last_error(log: &Path) -> String {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn fake_manim(dir: &Path, body: &str) -> Config {
+        use std::os::unix::fs::PermissionsExt;
         let program = dir.join("fake-manim");
         fs::write(&program, format!("#!/bin/sh\n{body}\n")).expect("write");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("chmod");
-        }
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("chmod");
         Config {
             command: vec![program.display().to_string()],
             quality: 'l',
