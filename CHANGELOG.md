@@ -7,6 +7,44 @@ workspace share one version number.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-21
+
+### Added
+
+- Manim scenes drawn by notopod itself. A ```` ```manim ```` block of the
+  usual kind — Manim's shapes, `Text`, `MathTex`, `VGroup`, `Axes` and
+  `NumberPlane` with plotted functions and labels, placed with `next_to`,
+  `to_edge`, `arrange` and the rest, shown with `self.add` or
+  `self.play` — is read and painted in Rust, in milliseconds, with no
+  Python and no LaTeX. Sizes, colours, gaps and placement are Manim's
+  own, checked against real Manim. Anything more goes to real Manim.
+- The scene under the block you are typing in. With the cursor in a
+  ```` ```manim ```` block its code stays editable and its frame is drawn
+  underneath, updated as you type; until a new frame arrives the last
+  one stays, with the error under it if the code is half typed.
+- `[manim] native = false` sends every scene to real Manim, and
+  `[manim] python` names the Python it is installed in, for commands such
+  as `uv run manim` that hide it.
+
+### Changed
+
+- ```` ```manim ```` blocks are drawn without asking: `--manim` is gone,
+  and `[manim] enabled = false` turns them off. Scenes notopod draws
+  itself run nothing; the rest run your Manim, so open notes you trust.
+- Real Manim is much faster. A render used to start `manim render`
+  afresh, which imports Manim and asks PyPI for a newer version first —
+  forty seconds on a network where that stalls. Now one Python process
+  keeps Manim loaded and forks for each scene: about 0.2s for the first,
+  0.03s after. It starts with the first scene that needs it and exits
+  after two idle minutes.
+
+### Fixed
+
+- See-through fills from real Manim came out too dark: Manim writes
+  premultiplied colour into its transparent frames. It is undone now.
+- `from x import *` in a ```` ```manim ```` body no longer ends up inside
+  `construct`, where Python forbids it.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
@@ -230,7 +268,8 @@ First release. A working editor with live preview; no diagram language yet.
 - CI on Linux, macOS and Windows; tagged releases build binaries for five
   targets.
 
-[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Yuvraj-cyborg/notopod/compare/v0.2.1...v0.3.0
